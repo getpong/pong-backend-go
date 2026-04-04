@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - app-data:/app/data
+    environment:
+      - PORT=8080
+      - DATABASE_PATH=data/ghm.db
+      - WORKER_COUNT=20
+      - CHECK_TICK_SECONDS=1
+      - ADMIN_API_KEY=pong_mykey
+    restart: unless-stopped
+
+volumes:
+  app-data:

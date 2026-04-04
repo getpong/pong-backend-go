@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Page.Name}} — Status</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0f1117;
+            color: #e4e6eb;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 48px 24px;
+            width: 100%;
+            flex: 1;
+        }
+
+        .header {
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            color: #8b8d94;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .banner {
+            padding: 16px 20px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            margin-bottom: 32px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .banner-operational {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+            color: #34d399;
+        }
+
+        .banner-partial {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+
+        .banner-down {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .banner-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .banner-operational .banner-dot { background: #34d399; }
+        .banner-partial .banner-dot { background: #fbbf24; }
+        .banner-down .banner-dot { background: #ef4444; }
+
+        .monitors {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background: #1e2028;
+            border-radius: 8px;
+            border: 1px solid #2a2d37;
+        }
+
+        .monitor-row:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+
+        .monitor-row:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+
+        .monitor-row:only-child {
+            border-radius: 8px;
+        }
+
+        .monitor-row {
+            display: flex;
+            flex-direction: column;
+            padding: 16px 20px;
+            background: #161821;
+        }
+
+        .monitor-name {
+            font-size: 14px;
+            font-weight: 500;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .monitor-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .uptime {
+            font-size: 13px;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .uptime-green { color: #34d399; }
+        .uptime-yellow { color: #fbbf24; }
+        .uptime-red { color: #ef4444; }
+
+        .badge {
+            font-size: 12px;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 100px;
+            white-space: nowrap;
+        }
+
+        .badge-up {
+            background: rgba(52, 211, 153, 0.1);
+            color: #34d399;
+        }
+
+        .badge-down {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .badge-unknown {
+            background: rgba(139, 141, 148, 0.1);
+            color: #8b8d94;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: #4a4d56;
+            font-size: 13px;
+        }
+
+        .footer a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .timeline {
+            display: flex;
+            gap: 1px;
+            height: 32px;
+            margin-top: 8px;
+            width: 100%;
+            overflow: visible;
+        }
+
+        .timeline-bar {
+            flex: 1;
+            border-radius: 2px;
+            position: relative;
+            cursor: pointer;
+            min-width: 2px;
+        }
+
+        .timeline-bar:hover {
+            opacity: 0.8;
+        }
+
+        .timeline-bar:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #22262f;
+            color: #e4e6eb;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 10;
+            border: 1px solid #2a2d37;
+            pointer-events: none;
+        }
+
+        .timeline-bar:nth-child(-n+5):hover::after {
+            left: 0;
+            transform: none;
+        }
+
+        .timeline-bar:nth-last-child(-n+5):hover::after {
+            left: auto;
+            right: 0;
+            transform: none;
+        }
+
+        .timeline-dates {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #4a4d56;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 48px 20px;
+            color: #8b8d94;
+            font-size: 14px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 32px 16px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            .monitor-row {
+                padding: 14px 16px;
+            }
+
+            .monitor-meta {
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{.Page.Name}}</h1>
+            {{if .Page.Description}}<p>{{.Page.Description}}</p>{{end}}
+        </div>
+
+        {{if .Monitors}}
+        {{$allUp := true}}
+        {{$allDown := true}}
+        {{range .Monitors}}
+            {{if ne .Monitor.Status "up"}}{{$allUp = false}}{{end}}
+            {{if eq .Monitor.Status "up"}}{{$allDown = false}}{{end}}
+        {{end}}
+
+        {{if $allUp}}
+        <div class="banner banner-operational">
+            <span class="banner-dot"></span>
+            All Systems Operational
+        </div>
+        {{else if $allDown}}
+        <div class="banner banner-down">
+            <span class="banner-dot"></span>
+            All Systems Down
+        </div>
+        {{else}}
+        <div class="banner banner-partial">
+            <span class="banner-dot"></span>
+            Some Systems Down
+        </div>
+        {{end}}
+
+        <div class="monitors">
+            {{range .Monitors}}
+            <div class="monitor-row">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <span class="monitor-name">{{.Monitor.Name}}</span>
+                    <div class="monitor-meta">
+                        <span class="uptime {{if gt .UptimePercent 99.0}}uptime-green{{else if gt .UptimePercent 95.0}}uptime-yellow{{else}}uptime-red{{end}}">{{printf "%.2f" .UptimePercent}}%</span>
+                        {{if eq .Monitor.Status "up"}}
+                        <span class="badge badge-up">Operational</span>
+                        {{else if eq .Monitor.Status "down"}}
+                        <span class="badge badge-down">Down</span>
+                        {{else}}
+                        <span class="badge badge-unknown">Unknown</span>
+                        {{end}}
+                    </div>
+                </div>
+                {{if .DailyUptime}}
+                <div class="timeline">
+                    {{range .DailyUptime}}
+                    <div class="timeline-bar"
+                         style="background: {{if eq .TotalChecks 0}}#2a2d37{{else if ge .Percentage 99.0}}#34d399{{else if ge .Percentage 95.0}}#fbbf24{{else}}#ef4444{{end}}"
+                         data-tooltip="{{.Date}}: {{if eq .TotalChecks 0}}No data{{else}}{{printf "%.1f" .Percentage}}%{{end}}">
+                    </div>
+                    {{end}}
+                </div>
+                <div class="timeline-dates">
+                    {{$first := index .DailyUptime 0}}
+                    {{$last := index .DailyUptime (lastIdx .DailyUptime)}}
+                    <span>{{$first.Date}}</span>
+                    <span>{{$last.Date}}</span>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="empty">No monitors configured for this status page.</div>
+        {{end}}
+    </div>
+
+    <div class="footer">
+        Powered by <a href="https://www.getpong.dev">Pong</a>
+    </div>
+</body>
+</html>
