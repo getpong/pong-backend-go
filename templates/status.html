@@ -113,14 +113,34 @@
             background: #161821;
         }
 
+        .monitor-name-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
+
         .monitor-name {
             font-size: 14px;
             font-weight: 500;
-            flex: 1;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .type-badge {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: rgba(139, 141, 148, 0.12);
+            color: #8b8d94;
+            white-space: nowrap;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
 
         .monitor-meta {
@@ -298,7 +318,10 @@
             {{range .Monitors}}
             <div class="monitor-row">
                 <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                    <span class="monitor-name">{{.Monitor.Name}}</span>
+                    <div class="monitor-name-wrap">
+                        <span class="monitor-name">{{.Monitor.Name}}</span>
+                        <span class="type-badge">{{.Monitor.Type}}</span>
+                    </div>
                     <div class="monitor-meta">
                         <span class="uptime {{if gt .UptimePercent 99.0}}uptime-green{{else if gt .UptimePercent 95.0}}uptime-yellow{{else}}uptime-red{{end}}">{{printf "%.2f" .UptimePercent}}%</span>
                         {{if eq .Monitor.Status "up"}}
