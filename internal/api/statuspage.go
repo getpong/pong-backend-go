@@ -104,6 +104,18 @@ func (h *StatusPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		passwordHash = string(hash)
 	}
 
+	if len(req.MonitorIDs) > 0 {
+		owned, err := h.store.VerifyMonitorOwnership(r.Context(), userID, req.MonitorIDs)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to verify monitors")
+			return
+		}
+		if !owned {
+			respondError(w, http.StatusNotFound, "one or more monitors not found")
+			return
+		}
+	}
+
 	page := &model.StatusPage{
 		UserID:       userID,
 		Name:         req.Name,
@@ -182,6 +194,17 @@ func (h *StatusPageHandler) Update(w http.ResponseWriter, r *http.Request) {
 		existing.HasPassword = existing.PasswordHash != ""
 	}
 	if req.MonitorIDs != nil {
+		if len(req.MonitorIDs) > 0 {
+			owned, err := h.store.VerifyMonitorOwnership(r.Context(), userID, req.MonitorIDs)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to verify monitors")
+				return
+			}
+			if !owned {
+				respondError(w, http.StatusNotFound, "one or more monitors not found")
+				return
+			}
+		}
 		existing.MonitorIDs = req.MonitorIDs
 	}
 

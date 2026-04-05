@@ -170,6 +170,18 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		AlertContactIDs:   req.AlertContactIDs,
 	}
 
+	if len(req.AlertContactIDs) > 0 {
+		owned, err := h.store.VerifyAlertContactOwnership(r.Context(), userID, req.AlertContactIDs)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to verify alert contacts")
+			return
+		}
+		if !owned {
+			respondError(w, http.StatusNotFound, "one or more alert contacts not found")
+			return
+		}
+	}
+
 	created, err := h.store.CreateMonitor(r.Context(), mon)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create monitor")
@@ -260,6 +272,17 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		existing.SSLWarnDays = *req.SSLWarnDays
 	}
 	if req.AlertContactIDs != nil {
+		if len(req.AlertContactIDs) > 0 {
+			owned, err := h.store.VerifyAlertContactOwnership(r.Context(), userID, req.AlertContactIDs)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to verify alert contacts")
+				return
+			}
+			if !owned {
+				respondError(w, http.StatusNotFound, "one or more alert contacts not found")
+				return
+			}
+		}
 		existing.AlertContactIDs = req.AlertContactIDs
 	}
 

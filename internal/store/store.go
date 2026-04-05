@@ -886,6 +886,59 @@ func (s *Store) GetStatusPageMonitors(ctx context.Context, statusPageID int64) (
 	return monitors, rows.Err()
 }
 
+// VerifyAlertContactOwnership checks that all given alert contact IDs belong to the specified user.
+func (s *Store) VerifyAlertContactOwnership(ctx context.Context, userID int64, contactIDs []int64) (bool, error) {
+	if len(contactIDs) == 0 {
+		return true, nil
+	}
+
+	placeholders := make([]string, len(contactIDs))
+	args := make([]any, 0, len(contactIDs)+1)
+	args = append(args, userID)
+	for i, id := range contactIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(
+		"SELECT COUNT(*) FROM alert_contacts WHERE user_id = ? AND id IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return false, err
+	}
+	return count == len(contactIDs), nil
+}
+
+// VerifyMonitorOwnership checks that all given monitor IDs belong to the specified user.
+// Returns false if any monitor does not exist or belongs to another user.
+func (s *Store) VerifyMonitorOwnership(ctx context.Context, userID int64, monitorIDs []int64) (bool, error) {
+	if len(monitorIDs) == 0 {
+		return true, nil
+	}
+
+	placeholders := make([]string, len(monitorIDs))
+	args := make([]any, 0, len(monitorIDs)+1)
+	args = append(args, userID)
+	for i, id := range monitorIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(
+		"SELECT COUNT(*) FROM monitors WHERE user_id = ? AND id IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return false, err
+	}
+	return count == len(monitorIDs), nil
+}
+
 func (s *Store) replaceStatusPageMonitors(ctx context.Context, statusPageID int64, monitorIDs []int64) error {
 	if _, err := s.db.ExecContext(ctx,
 		"DELETE FROM status_page_monitors WHERE status_page_id = ?", statusPageID,
