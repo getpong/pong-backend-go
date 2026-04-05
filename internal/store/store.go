@@ -64,13 +64,6 @@ func (s *Store) BootstrapAdminKey(ctx context.Context, rawKey string) error {
 	keyHash := sha256Hex(rawKey)
 	prefix := rawKey[:8]
 
-	// Check if key already exists.
-	var exists int
-	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM api_keys WHERE key_hash = ?", keyHash).Scan(&exists)
-	if exists > 0 {
-		return nil
-	}
-
 	// Create or get admin user.
 	now := time.Now().UTC().Format(timeFormat)
 	var userID int64
@@ -85,11 +78,19 @@ func (s *Store) BootstrapAdminKey(ctx context.Context, rawKey string) error {
 		}
 		userID, _ = res.LastInsertId()
 	} else {
-		// Ensure existing user is admin.
 		s.db.ExecContext(ctx, "UPDATE users SET is_admin = 1 WHERE id = ?", userID)
 	}
 
-	// Create the API key.
+	// Check if key already exists.
+	var exists int
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM api_keys WHERE key_hash = ?", keyHash).Scan(&exists)
+	if exists > 0 {
+		return nil
+	}
+
+	// Remove any previous bootstrap key, then insert the new one.
+	s.db.ExecContext(ctx, "DELETE FROM api_keys WHERE user_id = ? AND name = 'Admin Bootstrap Key'", userID)
+
 	_, err = s.db.ExecContext(ctx,
 		"INSERT INTO api_keys (user_id, name, prefix, key_hash, created_at) VALUES (?, ?, ?, ?, ?)",
 		userID, "Admin Bootstrap Key", prefix, keyHash, now,
