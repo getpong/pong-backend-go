@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"net/smtp"
@@ -18,13 +19,15 @@ import (
 
 // AlertHandler handles alert contact CRUD endpoints.
 type AlertHandler struct {
-	store *store.Store
-	cfg   *config.Config
+	store       *store.Store
+	cfg         *config.Config
+	verifiedTmpl *template.Template
 }
 
 // NewAlertHandler creates a new AlertHandler.
 func NewAlertHandler(s *store.Store, cfg *config.Config) *AlertHandler {
-	return &AlertHandler{store: s, cfg: cfg}
+	tmpl := template.Must(template.ParseFiles("templates/verified.html"))
+	return &AlertHandler{store: s, cfg: cfg, verifiedTmpl: tmpl}
 }
 
 type createAlertContactRequest struct {
@@ -274,7 +277,10 @@ func (h *AlertHandler) VerifyContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!DOCTYPE html><html><head><title>Email Verified</title><style>body{font-family:system-ui;background:#0f1117;color:#e4e6eb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:#161821;border:1px solid #2a2d37;border-radius:12px;padding:40px;text-align:center}h1{color:#34d399;margin-bottom:8px}p{color:#8b8fa3}</style></head><body><div class="card"><h1>Email Verified</h1><p>Your email address has been verified. You can close this page.</p></div></body></html>`)
+	h.verifiedTmpl.ExecuteTemplate(w, "verified.html", map[string]string{
+		"Title":   "Email Verified",
+		"Message": "Your email address has been verified. You can close this page.",
+	})
 }
 
 // ResendVerification handles POST /api/v1/alert-contacts/{id}/resend. Authenticated.
