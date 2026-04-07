@@ -36,7 +36,7 @@ func main() {
 	dbPath := fmt.Sprintf("/tmp/ghm-bench-%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
 
-	db, err := store.New(dbPath)
+	db, err := store.New(dbPath, "")
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
@@ -102,7 +102,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), *duration)
 	defer cancel()
 
-	httpChecker := checker.NewHTTPChecker()
+	httpChecker := checker.NewHTTPChecker(nil)
 	sched := checker.NewScheduler(db, httpChecker, alertCh, *workers, 1)
 
 	// Count check results by polling DB.

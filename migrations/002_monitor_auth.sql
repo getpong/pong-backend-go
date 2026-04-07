@@ -1,0 +1,2 @@
+ALTER TABLE monitors ADD COLUMN http_auth_type TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE monitors ADD COLUMN http_auth TEXT NOT NULL DEFAULT '';

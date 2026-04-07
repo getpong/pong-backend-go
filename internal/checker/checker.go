@@ -3,6 +3,7 @@ package checker
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -19,14 +20,18 @@ type Checker interface {
 	Check(ctx context.Context, m model.Monitor) model.CheckResult
 }
 
+// AuthDecryptor decrypts the HttpAuth blob for a monitor.
+type AuthDecryptor func(m *model.Monitor) (string, error)
+
 // HTTPChecker performs HTTP-based health checks.
 type HTTPChecker struct {
-	client *http.Client
+	client      *http.Client
+	decryptAuth AuthDecryptor
 }
 
 // NewHTTPChecker returns an HTTPChecker with sensible defaults.
 // The per-request timeout is set from the monitor config at check time.
-func NewHTTPChecker() *HTTPChecker {
+func NewHTTPChecker(decryptAuth AuthDecryptor) *HTTPChecker {
 	return &HTTPChecker{
 		client: &http.Client{
 			// Disable automatic redirects so we capture the actual status code.
@@ -37,6 +42,7 @@ func NewHTTPChecker() *HTTPChecker {
 				return nil
 			},
 		},
+		decryptAuth: decryptAuth,
 	}
 }
 
@@ -62,6 +68,27 @@ func (h *HTTPChecker) Check(ctx context.Context, m model.Monitor) model.CheckRes
 		return result
 	}
 	req.Header.Set("User-Agent", "pong-backend-go/1.0")
+
+	// Apply HTTP authentication if configured.
+	if (m.HttpAuthType == "basic" || m.HttpAuthType == "header") && h.decryptAuth != nil {
+		authJSON, err := h.decryptAuth(&m)
+		if err != nil {
+			result.Status = "down"
+			result.Message = fmt.Sprintf("failed to decrypt auth: %v", err)
+			return result
+		}
+		if authJSON != "" {
+			var raw map[string]string
+			if err := json.Unmarshal([]byte(authJSON), &raw); err == nil {
+				switch raw["type"] {
+				case "basic":
+					req.SetBasicAuth(raw["username"], raw["password"])
+				case "header":
+					req.Header.Set(raw["header"], raw["value"])
+				}
+			}
+		}
+	}
 
 	start := time.Now()
 	resp, err := h.client.Do(req)

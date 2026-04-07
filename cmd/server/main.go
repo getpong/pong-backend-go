@@ -24,7 +24,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := store.New(cfg.DatabasePath)
+	db, err := store.New(cfg.DatabasePath, cfg.EncryptionKey)
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
@@ -60,7 +60,7 @@ func main() {
 
 	alertCh := make(chan model.StateChangeEvent, 100)
 
-	httpChecker := checker.NewHTTPChecker()
+	httpChecker := checker.NewHTTPChecker(db.DecryptMonitorAuth)
 	sched := checker.NewScheduler(db, httpChecker, alertCh, cfg.WorkerCount, cfg.CheckTickSeconds)
 	go sched.Start(ctx)
 

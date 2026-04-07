@@ -34,6 +34,9 @@ type Monitor struct {
 	HeartbeatLastPing *time.Time `json:"heartbeat_last_ping,omitempty"`
 	SSLWarnDays       int        `json:"ssl_warn_days,omitempty"`
 	SSLExpiryAt       *time.Time `json:"ssl_expiry_at,omitempty"`
+	HttpAuthType       string     `json:"http_auth_type,omitempty"`
+	HttpAuth           string     `json:"-"`
+	HttpAuthConfigured bool       `json:"http_auth_configured,omitempty"`
 	Enabled           bool       `json:"enabled"`
 	Status          string     `json:"status"`
 	LastCheckedAt   *time.Time `json:"last_checked_at,omitempty"`
@@ -105,6 +108,20 @@ type APIKey struct {
 	Prefix     string     `json:"prefix"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// HttpAuthBasic holds Basic Auth credentials for JSON marshalling.
+type HttpAuthBasic struct {
+	Type     string `json:"type"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// HttpAuthHeader holds custom header credentials for JSON marshalling.
+type HttpAuthHeader struct {
+	Type   string `json:"type"`
+	Header string `json:"header"`
+	Value  string `json:"value"`
 }
 
 // APIKeyCreated is returned only once when creating a key — includes the raw key.

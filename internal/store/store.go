@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getpong/pong-backend-go/internal/crypto"
 	"github.com/getpong/pong-backend-go/internal/model"
 
 	_ "modernc.org/sqlite"
@@ -23,14 +24,15 @@ const timeFormat = "2006-01-02T15:04:05Z"
 const monitorColumns = `id, user_id, name, type, target, interval_secs, timeout_secs,
 	keyword, keyword_type, keyword_match, expected_status, latency_warn_ms,
 	confirmation_count, consecutive_fails, heartbeat_token, heartbeat_secret, heartbeat_last_ping,
-	ssl_warn_days, ssl_expiry_at,
+	ssl_warn_days, ssl_expiry_at, http_auth_type, http_auth,
 	enabled, status, last_checked_at, created_at, updated_at`
 
 type Store struct {
-	db *sql.DB
+	db            *sql.DB
+	encryptionKey string
 }
 
-func New(dbPath string) (*Store, error) {
+func New(dbPath string, encryptionKey string) (*Store, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
@@ -46,7 +48,7 @@ func New(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	return &Store{db: db}, nil
+	return &Store{db: db, encryptionKey: encryptionKey}, nil
 }
 
 func (s *Store) Close() error {
@@ -333,15 +335,27 @@ func (s *Store) UserStats(ctx context.Context) (map[string]int64, error) {
 
 func (s *Store) CreateMonitor(ctx context.Context, m *model.Monitor) (*model.Monitor, error) {
 	now := time.Now().UTC().Format(timeFormat)
+
+	encryptedAuth := ""
+	if m.HttpAuth != "" && s.encryptionKey != "" {
+		enc, err := crypto.Encrypt([]byte(m.HttpAuth), s.encryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt auth: %w", err)
+		}
+		encryptedAuth = enc
+	}
+
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO monitors (user_id, name, type, target, interval_secs, timeout_secs,
 			keyword, keyword_type, keyword_match, expected_status, latency_warn_ms,
 			confirmation_count, heartbeat_token, heartbeat_secret, ssl_warn_days,
+			http_auth_type, http_auth,
 			enabled, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?)`,
 		m.UserID, m.Name, m.Type, m.Target, m.IntervalSecs, m.TimeoutSecs,
 		m.Keyword, m.KeywordType, m.KeywordMatch, m.ExpectedStatus, m.LatencyWarnMs,
 		m.ConfirmationCount, m.HeartbeatToken, m.HeartbeatSecret, m.SSLWarnDays,
+		m.HttpAuthType, encryptedAuth,
 		boolToInt(m.Enabled),
 		now, now,
 	)
@@ -431,15 +445,35 @@ func (s *Store) ListMonitors(ctx context.Context, userID int64) ([]model.Monitor
 
 func (s *Store) UpdateMonitor(ctx context.Context, m *model.Monitor) error {
 	now := time.Now().UTC().Format(timeFormat)
+
+	encryptedAuth := m.HttpAuth // may already be encrypted if unchanged
+	if m.HttpAuth != "" && s.encryptionKey != "" && m.HttpAuthType != "none" {
+		// Only re-encrypt if it looks like plaintext JSON (starts with '{').
+		if len(m.HttpAuth) > 0 && m.HttpAuth[0] == '{' {
+			enc, err := crypto.Encrypt([]byte(m.HttpAuth), s.encryptionKey)
+			if err != nil {
+				return fmt.Errorf("encrypt auth: %w", err)
+			}
+			encryptedAuth = enc
+		}
+	}
+	if m.HttpAuthType == "none" {
+		encryptedAuth = ""
+	}
+
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE monitors SET name=?, type=?, target=?, interval_secs=?, timeout_secs=?,
 			keyword=?, keyword_type=?, keyword_match=?, expected_status=?, latency_warn_ms=?,
-			confirmation_count=?, heartbeat_secret=?, ssl_warn_days=?, enabled=?, updated_at=?
+			confirmation_count=?, heartbeat_secret=?, ssl_warn_days=?,
+			http_auth_type=?, http_auth=?,
+			enabled=?, last_checked_at=?, updated_at=?
 		WHERE id=? AND user_id=?`,
 		m.Name, m.Type, m.Target, m.IntervalSecs, m.TimeoutSecs,
 		m.Keyword, m.KeywordType, m.KeywordMatch, m.ExpectedStatus, m.LatencyWarnMs,
-		m.ConfirmationCount, m.HeartbeatSecret, m.SSLWarnDays, boolToInt(m.Enabled),
-		now, m.ID, m.UserID,
+		m.ConfirmationCount, m.HeartbeatSecret, m.SSLWarnDays,
+		m.HttpAuthType, encryptedAuth,
+		boolToInt(m.Enabled),
+		nil, now, m.ID, m.UserID,
 	)
 	if err != nil {
 		return fmt.Errorf("update monitor: %w", err)
@@ -573,6 +607,7 @@ func (s *Store) scanMonitor(row *sql.Row) (*model.Monitor, error) {
 		&m.ExpectedStatus, &m.LatencyWarnMs,
 		&m.ConfirmationCount, &m.ConsecutiveFails, &m.HeartbeatToken, &m.HeartbeatSecret, &heartbeatLastPing,
 		&m.SSLWarnDays, &sslExpiryAt,
+		&m.HttpAuthType, &m.HttpAuth,
 		&enabled, &m.Status,
 		&lastChecked, &createdAt, &updatedAt,
 	)
@@ -581,6 +616,7 @@ func (s *Store) scanMonitor(row *sql.Row) (*model.Monitor, error) {
 	}
 
 	m.Enabled = enabled == 1
+	m.HttpAuthConfigured = m.HttpAuthType != "" && m.HttpAuthType != "none"
 	if lastChecked.Valid {
 		t, _ := time.Parse(timeFormat, lastChecked.String)
 		m.LastCheckedAt = &t
@@ -614,6 +650,7 @@ func (s *Store) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
 		&m.ExpectedStatus, &m.LatencyWarnMs,
 		&m.ConfirmationCount, &m.ConsecutiveFails, &m.HeartbeatToken, &m.HeartbeatSecret, &heartbeatLastPing,
 		&m.SSLWarnDays, &sslExpiryAt,
+		&m.HttpAuthType, &m.HttpAuth,
 		&enabled, &m.Status,
 		&lastChecked, &createdAt, &updatedAt,
 	)
@@ -622,6 +659,7 @@ func (s *Store) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
 	}
 
 	m.Enabled = enabled == 1
+	m.HttpAuthConfigured = m.HttpAuthType != "" && m.HttpAuthType != "none"
 	if lastChecked.Valid {
 		t, _ := time.Parse(timeFormat, lastChecked.String)
 		m.LastCheckedAt = &t
@@ -641,6 +679,19 @@ func (s *Store) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
 		m.UpdatedAt, _ = time.Parse(timeFormat, updatedAt.String)
 	}
 	return &m, nil
+}
+
+// DecryptMonitorAuth decrypts the HttpAuth field of a monitor.
+// Returns the plaintext JSON or empty string if no auth is configured.
+func (s *Store) DecryptMonitorAuth(m *model.Monitor) (string, error) {
+	if m.HttpAuth == "" || s.encryptionKey == "" {
+		return "", nil
+	}
+	plaintext, err := crypto.Decrypt(m.HttpAuth, s.encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("decrypt monitor auth: %w", err)
+	}
+	return string(plaintext), nil
 }
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ type Config struct {
 	RetentionDays     int
 	EnforcePlanLimits        bool
 	RequireEmailVerification bool
+	EncryptionKey            string
 }
 
 func Load() (*Config, error) {
@@ -45,6 +46,13 @@ func Load() (*Config, error) {
 		RetentionDays:     90,
 		EnforcePlanLimits:        os.Getenv("ENFORCE_PLAN_LIMITS") == "true",
 		RequireEmailVerification: os.Getenv("REQUIRE_EMAIL_VERIFICATION") == "true",
+	}
+
+	if v := os.Getenv("ENCRYPTION_KEY"); v != "" {
+		if len(v) != 64 {
+			return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)")
+		}
+		cfg.EncryptionKey = v
 	}
 
 	// Auth0 is optional if ADMIN_API_KEY is set (API-key-only mode).
@@ -82,6 +90,11 @@ func Load() (*Config, error) {
 // Auth0Enabled returns true if Auth0 is configured.
 func (c *Config) Auth0Enabled() bool {
 	return c.Auth0Domain != "" && c.Auth0Audience != ""
+}
+
+// EncryptionEnabled returns true if an encryption key is configured.
+func (c *Config) EncryptionEnabled() bool {
+	return c.EncryptionKey != ""
 }
 
 func envOrDefault(key, fallback string) string {

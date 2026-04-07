@@ -44,6 +44,11 @@ type createMonitorRequest struct {
 	HeartbeatSecret   string  `json:"heartbeat_secret,omitempty"`
 	SSLWarnDays       *int    `json:"ssl_warn_days"`
 	AlertContactIDs   []int64 `json:"alert_contact_ids,omitempty"`
+	HttpAuthType      string  `json:"http_auth_type,omitempty"`
+	HttpAuthUsername  string  `json:"http_auth_username,omitempty"`
+	HttpAuthPassword  string  `json:"http_auth_password,omitempty"`
+	HttpAuthHeader    string  `json:"http_auth_header,omitempty"`
+	HttpAuthValue     string  `json:"http_auth_value,omitempty"`
 }
 
 type updateMonitorRequest struct {
@@ -61,6 +66,15 @@ type updateMonitorRequest struct {
 	HeartbeatSecret   *string `json:"heartbeat_secret,omitempty"`
 	SSLWarnDays       *int    `json:"ssl_warn_days,omitempty"`
 	AlertContactIDs   []int64 `json:"alert_contact_ids,omitempty"`
+	HttpAuthType      *string `json:"http_auth_type,omitempty"`
+	HttpAuthUsername  *string `json:"http_auth_username,omitempty"`
+	HttpAuthPassword  *string `json:"http_auth_password,omitempty"`
+	HttpAuthHeader    *string `json:"http_auth_header,omitempty"`
+	HttpAuthValue     *string `json:"http_auth_value,omitempty"`
+}
+
+var validHttpAuthTypes = map[string]bool{
+	"none": true, "basic": true, "header": true,
 }
 
 // List returns all monitors for the authenticated user.
@@ -149,6 +163,41 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		heartbeatToken = hex.EncodeToString(b)
 	}
 
+	// Build HTTP auth blob if configured.
+	httpAuthType := "none"
+	httpAuth := ""
+	if req.HttpAuthType != "" && req.HttpAuthType != "none" {
+		if !validHttpAuthTypes[req.HttpAuthType] {
+			respondError(w, http.StatusBadRequest, "http_auth_type must be none, basic, or header")
+			return
+		}
+		if req.Type != "http" && req.Type != "keyword" {
+			respondError(w, http.StatusBadRequest, "HTTP authentication is only supported for http and keyword monitors")
+			return
+		}
+		if !h.cfg.EncryptionEnabled() {
+			respondError(w, http.StatusBadRequest, "encryption not configured; cannot use HTTP authentication")
+			return
+		}
+		switch req.HttpAuthType {
+		case "basic":
+			if req.HttpAuthUsername == "" || req.HttpAuthPassword == "" {
+				respondError(w, http.StatusBadRequest, "username and password are required for basic auth")
+				return
+			}
+			blob, _ := json.Marshal(model.HttpAuthBasic{Type: "basic", Username: req.HttpAuthUsername, Password: req.HttpAuthPassword})
+			httpAuth = string(blob)
+		case "header":
+			if req.HttpAuthHeader == "" || req.HttpAuthValue == "" {
+				respondError(w, http.StatusBadRequest, "header name and value are required for header auth")
+				return
+			}
+			blob, _ := json.Marshal(model.HttpAuthHeader{Type: "header", Header: req.HttpAuthHeader, Value: req.HttpAuthValue})
+			httpAuth = string(blob)
+		}
+		httpAuthType = req.HttpAuthType
+	}
+
 	mon := &model.Monitor{
 		UserID:            userID,
 		Name:              req.Name,
@@ -165,6 +214,8 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		SSLWarnDays:       sslWarnDays,
 		HeartbeatToken:    heartbeatToken,
 		HeartbeatSecret:   req.HeartbeatSecret,
+		HttpAuthType:      httpAuthType,
+		HttpAuth:          httpAuth,
 		Enabled:           true,
 		Status:            "unknown",
 		AlertContactIDs:   req.AlertContactIDs,
@@ -271,6 +322,62 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.SSLWarnDays != nil {
 		existing.SSLWarnDays = *req.SSLWarnDays
 	}
+	if req.HttpAuthType != nil {
+		authType := *req.HttpAuthType
+		if !validHttpAuthTypes[authType] {
+			respondError(w, http.StatusBadRequest, "http_auth_type must be none, basic, or header")
+			return
+		}
+		if authType == "none" {
+			existing.HttpAuthType = "none"
+			existing.HttpAuth = ""
+			existing.HttpAuthConfigured = false
+		} else {
+			if existing.Type != "http" && existing.Type != "keyword" {
+				respondError(w, http.StatusBadRequest, "HTTP authentication is only supported for http and keyword monitors")
+				return
+			}
+			if !h.cfg.EncryptionEnabled() {
+				respondError(w, http.StatusBadRequest, "encryption not configured; cannot use HTTP authentication")
+				return
+			}
+			switch authType {
+			case "basic":
+				username := ""
+				password := ""
+				if req.HttpAuthUsername != nil {
+					username = *req.HttpAuthUsername
+				}
+				if req.HttpAuthPassword != nil {
+					password = *req.HttpAuthPassword
+				}
+				if username == "" || password == "" {
+					respondError(w, http.StatusBadRequest, "username and password are required for basic auth")
+					return
+				}
+				blob, _ := json.Marshal(model.HttpAuthBasic{Type: "basic", Username: username, Password: password})
+				existing.HttpAuth = string(blob)
+			case "header":
+				header := ""
+				value := ""
+				if req.HttpAuthHeader != nil {
+					header = *req.HttpAuthHeader
+				}
+				if req.HttpAuthValue != nil {
+					value = *req.HttpAuthValue
+				}
+				if header == "" || value == "" {
+					respondError(w, http.StatusBadRequest, "header name and value are required for header auth")
+					return
+				}
+				blob, _ := json.Marshal(model.HttpAuthHeader{Type: "header", Header: header, Value: value})
+				existing.HttpAuth = string(blob)
+			}
+			existing.HttpAuthType = authType
+			existing.HttpAuthConfigured = true
+		}
+	}
+
 	if req.AlertContactIDs != nil {
 		if len(req.AlertContactIDs) > 0 {
 			owned, err := h.store.VerifyAlertContactOwnership(r.Context(), userID, req.AlertContactIDs)
