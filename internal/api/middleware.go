@@ -325,7 +325,7 @@ func Auth0Middleware(domain, audience string, provisioner UserProvisioner, apiKe
 }
 
 // AdminMiddleware checks that the authenticated user has admin privileges.
-func AdminMiddleware(s *store.Store) func(http.Handler) http.Handler {
+func AdminMiddleware(s store.APIStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID := UserIDFromContext(r.Context())

@@ -14,10 +14,10 @@ import (
 )
 
 type APIKeyHandler struct {
-	store *store.Store
+	store store.APIStore
 }
 
-func NewAPIKeyHandler(s *store.Store) *APIKeyHandler {
+func NewAPIKeyHandler(s store.APIStore) *APIKeyHandler {
 	return &APIKeyHandler{store: s}
 }
 

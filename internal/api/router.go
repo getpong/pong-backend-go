@@ -8,7 +8,7 @@ import (
 )
 
 // NewRouter sets up all HTTP routes and returns the top-level handler.
-func NewRouter(s *store.Store, cfg *config.Config) http.Handler {
+func NewRouter(s store.APIStore, cfg *config.Config) http.Handler {
 	mux := http.NewServeMux()
 
 	monitors := NewMonitorHandler(s, cfg)

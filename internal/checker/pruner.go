@@ -10,14 +10,14 @@ import (
 
 // Pruner periodically deletes old check results and alert logs.
 type Pruner struct {
-	store         *store.Store
+	store         store.PrunerStore
 	retentionDays int
 	interval      time.Duration
 	done          chan struct{}
 }
 
 // NewPruner creates a pruner that runs every interval and deletes data older than retentionDays.
-func NewPruner(s *store.Store, retentionDays int, interval time.Duration) *Pruner {
+func NewPruner(s store.PrunerStore, retentionDays int, interval time.Duration) *Pruner {
 	return &Pruner{
 		store:         s,
 		retentionDays: retentionDays,

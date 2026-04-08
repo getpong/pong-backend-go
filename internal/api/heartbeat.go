@@ -11,11 +11,11 @@ import (
 
 // HeartbeatHandler handles the public heartbeat ping endpoint.
 type HeartbeatHandler struct {
-	store *store.Store
+	store store.APIStore
 }
 
 // NewHeartbeatHandler returns a new HeartbeatHandler.
-func NewHeartbeatHandler(s *store.Store) *HeartbeatHandler {
+func NewHeartbeatHandler(s store.APIStore) *HeartbeatHandler {
 	return &HeartbeatHandler{store: s}
 }
 

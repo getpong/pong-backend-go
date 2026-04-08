@@ -12,11 +12,11 @@ var emailRegexp = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA
 
 // WaitlistHandler handles the public waitlist signup endpoint.
 type WaitlistHandler struct {
-	store *store.Store
+	store store.APIStore
 }
 
 // NewWaitlistHandler creates a new WaitlistHandler.
-func NewWaitlistHandler(s *store.Store) *WaitlistHandler {
+func NewWaitlistHandler(s store.APIStore) *WaitlistHandler {
 	return &WaitlistHandler{store: s}
 }
 

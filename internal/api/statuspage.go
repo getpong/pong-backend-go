@@ -19,13 +19,13 @@ import (
 
 // StatusPageHandler handles status page CRUD and public view endpoints.
 type StatusPageHandler struct {
-	store    *store.Store
+	store    store.APIStore
 	tmpl     *template.Template
 	pwdTmpl  *template.Template
 }
 
 // NewStatusPageHandler creates a new StatusPageHandler and parses the templates.
-func NewStatusPageHandler(s *store.Store) *StatusPageHandler {
+func NewStatusPageHandler(s store.APIStore) *StatusPageHandler {
 	funcMap := template.FuncMap{
 		"lastIdx": func(s []model.DailyUptime) int {
 			return len(s) - 1

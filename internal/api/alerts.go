@@ -19,13 +19,13 @@ import (
 
 // AlertHandler handles alert contact CRUD endpoints.
 type AlertHandler struct {
-	store       *store.Store
+	store       store.APIStore
 	cfg         *config.Config
 	verifiedTmpl *template.Template
 }
 
 // NewAlertHandler creates a new AlertHandler.
-func NewAlertHandler(s *store.Store, cfg *config.Config) *AlertHandler {
+func NewAlertHandler(s store.APIStore, cfg *config.Config) *AlertHandler {
 	tmpl := template.Must(template.ParseFiles("templates/verified.html"))
 	return &AlertHandler{store: s, cfg: cfg, verifiedTmpl: tmpl}
 }

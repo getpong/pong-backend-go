@@ -20,12 +20,12 @@ var validMonitorTypes = map[string]bool{
 
 // MonitorHandler handles monitor CRUD and related endpoints.
 type MonitorHandler struct {
-	store *store.Store
+	store store.APIStore
 	cfg   *config.Config
 }
 
 // NewMonitorHandler creates a new MonitorHandler.
-func NewMonitorHandler(s *store.Store, cfg *config.Config) *MonitorHandler {
+func NewMonitorHandler(s store.APIStore, cfg *config.Config) *MonitorHandler {
 	return &MonitorHandler{store: s, cfg: cfg}
 }
 

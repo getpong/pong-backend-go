@@ -14,14 +14,14 @@ import (
 // Alerter consumes state change events and dispatches notifications
 // to the appropriate alert contacts.
 type Alerter struct {
-	store   *store.Store
+	store   store.AlerterStore
 	alertCh chan model.StateChangeEvent
 	cfg     *config.Config
 	done    chan struct{}
 }
 
 // NewAlerter creates a new Alerter.
-func NewAlerter(s *store.Store, alertCh chan model.StateChangeEvent, cfg *config.Config) *Alerter {
+func NewAlerter(s store.AlerterStore, alertCh chan model.StateChangeEvent, cfg *config.Config) *Alerter {
 	return &Alerter{
 		store:   s,
 		alertCh: alertCh,

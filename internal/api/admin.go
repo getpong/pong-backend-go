@@ -13,11 +13,11 @@ var validPlans = map[string]bool{
 
 // AdminHandler handles admin-only endpoints.
 type AdminHandler struct {
-	store *store.Store
+	store store.APIStore
 }
 
 // NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(s *store.Store) *AdminHandler {
+func NewAdminHandler(s store.APIStore) *AdminHandler {
 	return &AdminHandler{store: s}
 }
 

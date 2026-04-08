@@ -14,7 +14,7 @@ import (
 // Scheduler periodically fetches due monitors and dispatches health checks
 // across a pool of worker goroutines.
 type Scheduler struct {
-	store            *store.Store
+	store            store.CheckerStore
 	httpChecker      Checker
 	sslChecker       Checker
 	heartbeatChecker Checker
@@ -29,7 +29,7 @@ type Scheduler struct {
 // "http" and "keyword" monitor types) and creates SSL and heartbeat checkers
 // internally. For backwards compatibility, if only an HTTP checker is needed
 // callers may pass it as the checker argument.
-func NewScheduler(s *store.Store, checker Checker, alertCh chan model.StateChangeEvent, workerCount int, tickSeconds int) *Scheduler {
+func NewScheduler(s store.CheckerStore, checker Checker, alertCh chan model.StateChangeEvent, workerCount int, tickSeconds int) *Scheduler {
 	return &Scheduler{
 		store:            s,
 		httpChecker:      checker,
@@ -133,14 +133,6 @@ func (s *Scheduler) worker(ctx context.Context, id int, jobs <-chan model.Monito
 			continue
 		}
 
-		// Always persist the check result regardless of confirmation logic.
-		if err := s.store.InsertCheckResult(ctx, &result); err != nil {
-			slog.Error("failed to insert check result",
-				"monitor_id", m.ID,
-				"error", err,
-			)
-		}
-
 		// For SSL monitors, extract and persist the certificate expiry date.
 		if m.Type == "ssl" {
 			if expiryAt, ok := parseSSLExpiry(result.Message); ok {
@@ -161,38 +153,24 @@ func (s *Scheduler) worker(ctx context.Context, id int, jobs <-chan model.Monito
 		}
 
 		effectiveStatus := result.Status
+		resetFails := true
+		newFailCount := m.ConsecutiveFails + 1
 
 		if result.Status == "down" {
-			newCount, err := s.store.IncrementConsecutiveFails(ctx, m.ID)
-			if err != nil {
-				slog.Error("failed to increment consecutive fails",
-					"monitor_id", m.ID,
-					"error", err,
-				)
-			}
-
-			if newCount < confirmationCount {
-				// Not yet confirmed down. Update last_checked_at but keep
-				// the current status unchanged.
+			resetFails = false
+			if newFailCount < confirmationCount {
 				effectiveStatus = m.Status
 				slog.Debug("failure not yet confirmed",
 					"monitor_id", m.ID,
-					"consecutive_fails", newCount,
+					"consecutive_fails", newFailCount,
 					"confirmation_count", confirmationCount,
-				)
-			}
-		} else {
-			// Up — reset consecutive failure counter.
-			if err := s.store.ResetConsecutiveFails(ctx, m.ID); err != nil {
-				slog.Error("failed to reset consecutive fails",
-					"monitor_id", m.ID,
-					"error", err,
 				)
 			}
 		}
 
-		if err := s.store.UpdateMonitorStatus(ctx, m.ID, effectiveStatus, result.CheckedAt); err != nil {
-			slog.Error("failed to update monitor status",
+		// Persist check result + monitor state update in a single transaction.
+		if err := s.store.SaveCheckResult(ctx, m.ID, &result, effectiveStatus, resetFails, newFailCount); err != nil {
+			slog.Error("failed to save check result",
 				"monitor_id", m.ID,
 				"error", err,
 			)

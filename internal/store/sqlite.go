@@ -27,12 +27,13 @@ const monitorColumns = `id, user_id, name, type, target, interval_secs, timeout_
 	ssl_warn_days, ssl_expiry_at, http_auth_type, http_auth,
 	enabled, status, last_checked_at, created_at, updated_at`
 
-type Store struct {
+// SQLiteStore is the SQLite-backed implementation of the store interfaces.
+type SQLiteStore struct {
 	db            *sql.DB
 	encryptionKey string
 }
 
-func New(dbPath string, encryptionKey string) (*Store, error) {
+func NewSQLite(dbPath string, encryptionKey string) (*SQLiteStore, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
@@ -48,21 +49,21 @@ func New(dbPath string, encryptionKey string) (*Store, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	return &Store{db: db, encryptionKey: encryptionKey}, nil
+	return &SQLiteStore{db: db, encryptionKey: encryptionKey}, nil
 }
 
-func (s *Store) Close() error {
+func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
 // DB returns the underlying *sql.DB for direct queries (e.g. benchmarks).
-func (s *Store) DB() *sql.DB {
+func (s *SQLiteStore) DB() *sql.DB {
 	return s.db
 }
 
 // BootstrapAdminKey ensures an admin user and API key exist for the given raw key.
 // Used on startup when ADMIN_API_KEY is set. Idempotent — skips if the key already exists.
-func (s *Store) BootstrapAdminKey(ctx context.Context, rawKey string) error {
+func (s *SQLiteStore) BootstrapAdminKey(ctx context.Context, rawKey string) error {
 	keyHash := sha256Hex(rawKey)
 	prefix := rawKey[:8]
 
@@ -110,7 +111,7 @@ func sha256Hex(s string) string {
 }
 
 // Migrate reads .sql files from migrationsDir and executes unapplied ones.
-func (s *Store) Migrate(migrationsDir string) error {
+func (s *SQLiteStore) Migrate(migrationsDir string) error {
 	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		filename TEXT PRIMARY KEY,
 		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -176,7 +177,7 @@ func (s *Store) Migrate(migrationsDir string) error {
 
 // EnsureUser returns the local user ID for an Auth0 subject, creating the user
 // on first encounter. This implements the UserProvisioner interface.
-func (s *Store) EnsureUser(ctx context.Context, auth0Sub string, email string) (int64, error) {
+func (s *SQLiteStore) EnsureUser(ctx context.Context, auth0Sub string, email string) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx,
 		"SELECT id FROM users WHERE oauth_sub = ?", auth0Sub,
@@ -211,7 +212,7 @@ func (s *Store) EnsureUser(ctx context.Context, auth0Sub string, email string) (
 	return res.LastInsertId()
 }
 
-func (s *Store) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
+func (s *SQLiteStore) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
 	var u model.User
 	var isAdmin int
 	var createdAt, updatedAt string
@@ -228,7 +229,7 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (*model.User, error) 
 }
 
 // IsAdmin returns true if the user with the given ID has admin privileges.
-func (s *Store) IsAdmin(ctx context.Context, userID int64) (bool, error) {
+func (s *SQLiteStore) IsAdmin(ctx context.Context, userID int64) (bool, error) {
 	var isAdmin int
 	err := s.db.QueryRowContext(ctx,
 		"SELECT is_admin FROM users WHERE id = ?", userID,
@@ -240,7 +241,7 @@ func (s *Store) IsAdmin(ctx context.Context, userID int64) (bool, error) {
 }
 
 // ListUsers returns all users with monitor counts.
-func (s *Store) ListUsers(ctx context.Context) ([]model.User, error) {
+func (s *SQLiteStore) ListUsers(ctx context.Context) ([]model.User, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT u.id, u.oauth_sub, u.email, u.is_admin, u.plan, u.created_at, u.updated_at,
 			COUNT(m.id) AS total_monitors,
@@ -272,7 +273,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]model.User, error) {
 }
 
 // SetUserPlan updates a user's subscription plan.
-func (s *Store) SetUserPlan(ctx context.Context, userID int64, plan string) error {
+func (s *SQLiteStore) SetUserPlan(ctx context.Context, userID int64, plan string) error {
 	now := time.Now().UTC().Format(timeFormat)
 	res, err := s.db.ExecContext(ctx,
 		"UPDATE users SET plan = ?, updated_at = ? WHERE id = ?",
@@ -289,7 +290,7 @@ func (s *Store) SetUserPlan(ctx context.Context, userID int64, plan string) erro
 }
 
 // ListWaitlist returns all waitlist entries.
-func (s *Store) ListWaitlist(ctx context.Context) ([]map[string]string, error) {
+func (s *SQLiteStore) ListWaitlist(ctx context.Context) ([]map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT id, email, created_at FROM waitlist ORDER BY id DESC",
 	)
@@ -315,7 +316,7 @@ func (s *Store) ListWaitlist(ctx context.Context) ([]map[string]string, error) {
 }
 
 // UserStats returns summary counts for admin dashboard.
-func (s *Store) UserStats(ctx context.Context) (map[string]int64, error) {
+func (s *SQLiteStore) UserStats(ctx context.Context) (map[string]int64, error) {
 	var totalUsers, totalMonitors, activeMonitors, waitlistCount int64
 	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&totalUsers)
 	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM monitors").Scan(&totalMonitors)
@@ -333,7 +334,7 @@ func (s *Store) UserStats(ctx context.Context) (map[string]int64, error) {
 // Monitors
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateMonitor(ctx context.Context, m *model.Monitor) (*model.Monitor, error) {
+func (s *SQLiteStore) CreateMonitor(ctx context.Context, m *model.Monitor) (*model.Monitor, error) {
 	now := time.Now().UTC().Format(timeFormat)
 
 	encryptedAuth := ""
@@ -375,7 +376,7 @@ func (s *Store) CreateMonitor(ctx context.Context, m *model.Monitor) (*model.Mon
 	return s.GetMonitor(ctx, id, m.UserID)
 }
 
-func (s *Store) GetMonitor(ctx context.Context, id, userID int64) (*model.Monitor, error) {
+func (s *SQLiteStore) GetMonitor(ctx context.Context, id, userID int64) (*model.Monitor, error) {
 	m, err := s.scanMonitor(s.db.QueryRowContext(ctx,
 		`SELECT `+monitorColumns+`
 		FROM monitors WHERE id = ? AND user_id = ?`, id, userID,
@@ -394,21 +395,21 @@ func (s *Store) GetMonitor(ctx context.Context, id, userID int64) (*model.Monito
 }
 
 // CountMonitors returns the number of monitors owned by a user.
-func (s *Store) CountMonitors(ctx context.Context, userID int64) (int, error) {
+func (s *SQLiteStore) CountMonitors(ctx context.Context, userID int64) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM monitors WHERE user_id = ?", userID).Scan(&count)
 	return count, err
 }
 
 // CountAlertContacts returns the number of alert contacts owned by a user.
-func (s *Store) CountAlertContacts(ctx context.Context, userID int64) (int, error) {
+func (s *SQLiteStore) CountAlertContacts(ctx context.Context, userID int64) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM alert_contacts WHERE user_id = ?", userID).Scan(&count)
 	return count, err
 }
 
 // GetUserPlan returns the plan for a user.
-func (s *Store) GetUserPlan(ctx context.Context, userID int64) (string, error) {
+func (s *SQLiteStore) GetUserPlan(ctx context.Context, userID int64) (string, error) {
 	var plan string
 	err := s.db.QueryRowContext(ctx, "SELECT plan FROM users WHERE id = ?", userID).Scan(&plan)
 	if err != nil {
@@ -417,7 +418,7 @@ func (s *Store) GetUserPlan(ctx context.Context, userID int64) (string, error) {
 	return plan, nil
 }
 
-func (s *Store) ListMonitors(ctx context.Context, userID int64) ([]model.Monitor, error) {
+func (s *SQLiteStore) ListMonitors(ctx context.Context, userID int64) ([]model.Monitor, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+monitorColumns+`
 		FROM monitors WHERE user_id = ? ORDER BY id`, userID,
@@ -443,7 +444,7 @@ func (s *Store) ListMonitors(ctx context.Context, userID int64) ([]model.Monitor
 	return monitors, rows.Err()
 }
 
-func (s *Store) UpdateMonitor(ctx context.Context, m *model.Monitor) error {
+func (s *SQLiteStore) UpdateMonitor(ctx context.Context, m *model.Monitor) error {
 	now := time.Now().UTC().Format(timeFormat)
 
 	encryptedAuth := m.HttpAuth // may already be encrypted if unchanged
@@ -482,7 +483,7 @@ func (s *Store) UpdateMonitor(ctx context.Context, m *model.Monitor) error {
 	return s.replaceAlertContacts(ctx, m.ID, m.AlertContactIDs)
 }
 
-func (s *Store) DeleteMonitor(ctx context.Context, id, userID int64) error {
+func (s *SQLiteStore) DeleteMonitor(ctx context.Context, id, userID int64) error {
 	res, err := s.db.ExecContext(ctx, "DELETE FROM monitors WHERE id = ? AND user_id = ?", id, userID)
 	if err != nil {
 		return err
@@ -494,7 +495,7 @@ func (s *Store) DeleteMonitor(ctx context.Context, id, userID int64) error {
 	return nil
 }
 
-func (s *Store) SetMonitorEnabled(ctx context.Context, id, userID int64, enabled bool) error {
+func (s *SQLiteStore) SetMonitorEnabled(ctx context.Context, id, userID int64, enabled bool) error {
 	now := time.Now().UTC().Format(timeFormat)
 	res, err := s.db.ExecContext(ctx,
 		"UPDATE monitors SET enabled = ?, updated_at = ? WHERE id = ? AND user_id = ?",
@@ -510,7 +511,7 @@ func (s *Store) SetMonitorEnabled(ctx context.Context, id, userID int64, enabled
 	return nil
 }
 
-func (s *Store) GetDueMonitors(ctx context.Context) ([]model.Monitor, error) {
+func (s *SQLiteStore) GetDueMonitors(ctx context.Context) ([]model.Monitor, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+monitorColumns+`
 		FROM monitors
@@ -545,7 +546,7 @@ func (s *Store) GetDueMonitors(ctx context.Context) ([]model.Monitor, error) {
 	return monitors, rows.Err()
 }
 
-func (s *Store) UpdateMonitorStatus(ctx context.Context, id int64, status string, lastCheckedAt time.Time) error {
+func (s *SQLiteStore) UpdateMonitorStatus(ctx context.Context, id int64, status string, lastCheckedAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE monitors SET status = ?, last_checked_at = ?, updated_at = ? WHERE id = ?",
 		status, lastCheckedAt.UTC().Format(timeFormat), time.Now().UTC().Format(timeFormat), id,
@@ -553,7 +554,7 @@ func (s *Store) UpdateMonitorStatus(ctx context.Context, id int64, status string
 	return err
 }
 
-func (s *Store) replaceAlertContacts(ctx context.Context, monitorID int64, contactIDs []int64) error {
+func (s *SQLiteStore) replaceAlertContacts(ctx context.Context, monitorID int64, contactIDs []int64) error {
 	if _, err := s.db.ExecContext(ctx,
 		"DELETE FROM monitor_alert_contacts WHERE monitor_id = ?", monitorID,
 	); err != nil {
@@ -571,7 +572,7 @@ func (s *Store) replaceAlertContacts(ctx context.Context, monitorID int64, conta
 	return nil
 }
 
-func (s *Store) getAlertContactIDs(ctx context.Context, monitorID int64) ([]int64, error) {
+func (s *SQLiteStore) getAlertContactIDs(ctx context.Context, monitorID int64) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT alert_contact_id FROM monitor_alert_contacts WHERE monitor_id = ?", monitorID,
 	)
@@ -595,7 +596,7 @@ type scannable interface {
 	Scan(dest ...any) error
 }
 
-func (s *Store) scanMonitor(row *sql.Row) (*model.Monitor, error) {
+func (s *SQLiteStore) scanMonitor(row *sql.Row) (*model.Monitor, error) {
 	var m model.Monitor
 	var enabled int
 	var lastChecked, createdAt, updatedAt sql.NullString
@@ -638,7 +639,7 @@ func (s *Store) scanMonitor(row *sql.Row) (*model.Monitor, error) {
 	return &m, nil
 }
 
-func (s *Store) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
+func (s *SQLiteStore) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
 	var m model.Monitor
 	var enabled int
 	var lastChecked, createdAt, updatedAt sql.NullString
@@ -683,7 +684,7 @@ func (s *Store) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
 
 // DecryptMonitorAuth decrypts the HttpAuth field of a monitor.
 // Returns the plaintext JSON or empty string if no auth is configured.
-func (s *Store) DecryptMonitorAuth(m *model.Monitor) (string, error) {
+func (s *SQLiteStore) DecryptMonitorAuth(m *model.Monitor) (string, error) {
 	if m.HttpAuth == "" || s.encryptionKey == "" {
 		return "", nil
 	}
@@ -698,7 +699,7 @@ func (s *Store) DecryptMonitorAuth(m *model.Monitor) (string, error) {
 // Heartbeat
 // ---------------------------------------------------------------------------
 
-func (s *Store) UpdateHeartbeatPing(ctx context.Context, token string) (int64, error) {
+func (s *SQLiteStore) UpdateHeartbeatPing(ctx context.Context, token string) (int64, error) {
 	now := time.Now().UTC().Format(timeFormat)
 	var id int64
 	err := s.db.QueryRowContext(ctx,
@@ -713,7 +714,7 @@ func (s *Store) UpdateHeartbeatPing(ctx context.Context, token string) (int64, e
 	return id, nil
 }
 
-func (s *Store) GetMonitorByHeartbeatToken(ctx context.Context, token string) (*model.Monitor, error) {
+func (s *SQLiteStore) GetMonitorByHeartbeatToken(ctx context.Context, token string) (*model.Monitor, error) {
 	m, err := s.scanMonitor(s.db.QueryRowContext(ctx,
 		`SELECT `+monitorColumns+`
 		FROM monitors WHERE heartbeat_token = ? AND type = 'heartbeat'`, token,
@@ -734,7 +735,7 @@ func (s *Store) GetMonitorByHeartbeatToken(ctx context.Context, token string) (*
 // Confirmation Count
 // ---------------------------------------------------------------------------
 
-func (s *Store) IncrementConsecutiveFails(ctx context.Context, monitorID int64) (int, error) {
+func (s *SQLiteStore) IncrementConsecutiveFails(ctx context.Context, monitorID int64) (int, error) {
 	var newVal int
 	err := s.db.QueryRowContext(ctx,
 		`UPDATE monitors SET consecutive_fails = consecutive_fails + 1
@@ -748,18 +749,57 @@ func (s *Store) IncrementConsecutiveFails(ctx context.Context, monitorID int64) 
 	return newVal, nil
 }
 
-func (s *Store) ResetConsecutiveFails(ctx context.Context, monitorID int64) error {
+func (s *SQLiteStore) ResetConsecutiveFails(ctx context.Context, monitorID int64) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE monitors SET consecutive_fails = 0 WHERE id = ?", monitorID,
 	)
 	return err
 }
 
+// SaveCheckResult persists a check result and updates the monitor state in a
+// single transaction. This replaces the previous 3 separate writes
+// (InsertCheckResult + IncrementConsecutiveFails/ResetConsecutiveFails + UpdateMonitorStatus).
+func (s *SQLiteStore) SaveCheckResult(ctx context.Context, monitorID int64, result *model.CheckResult, status string, resetFails bool, newFailCount int) error {
+	now := time.Now().UTC().Format(timeFormat)
+	checkedAt := result.CheckedAt.UTC().Format(timeFormat)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 1. Insert check result.
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO check_results (monitor_id, status, latency_ms, status_code, message, region, checked_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		result.MonitorID, result.Status, result.LatencyMs, result.StatusCode, result.Message, result.Region, checkedAt,
+	); err != nil {
+		return fmt.Errorf("insert check result: %w", err)
+	}
+
+	// 2. Update monitor: status, last_checked_at, and consecutive_fails in one statement.
+	var failsExpr string
+	if resetFails {
+		failsExpr = "0"
+	} else {
+		failsExpr = fmt.Sprintf("%d", newFailCount)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE monitors SET status = ?, last_checked_at = ?, consecutive_fails = `+failsExpr+`, updated_at = ? WHERE id = ?`,
+		status, checkedAt, now, monitorID,
+	); err != nil {
+		return fmt.Errorf("update monitor: %w", err)
+	}
+
+	return tx.Commit()
+}
+
 // ---------------------------------------------------------------------------
 // SSL
 // ---------------------------------------------------------------------------
 
-func (s *Store) UpdateSSLExpiry(ctx context.Context, monitorID int64, expiryAt time.Time) error {
+func (s *SQLiteStore) UpdateSSLExpiry(ctx context.Context, monitorID int64, expiryAt time.Time) error {
 	now := time.Now().UTC().Format(timeFormat)
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE monitors SET ssl_expiry_at = ?, updated_at = ? WHERE id = ?",
@@ -772,7 +812,7 @@ func (s *Store) UpdateSSLExpiry(ctx context.Context, monitorID int64, expiryAt t
 // Status Pages
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateStatusPage(ctx context.Context, sp *model.StatusPage) (*model.StatusPage, error) {
+func (s *SQLiteStore) CreateStatusPage(ctx context.Context, sp *model.StatusPage) (*model.StatusPage, error) {
 	tokenBytes := make([]byte, 16)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
@@ -801,7 +841,7 @@ func (s *Store) CreateStatusPage(ctx context.Context, sp *model.StatusPage) (*mo
 	return s.GetStatusPage(ctx, id, sp.UserID)
 }
 
-func (s *Store) GetStatusPage(ctx context.Context, id, userID int64) (*model.StatusPage, error) {
+func (s *SQLiteStore) GetStatusPage(ctx context.Context, id, userID int64) (*model.StatusPage, error) {
 	var sp model.StatusPage
 	var passwordHash string
 	var createdAt, updatedAt string
@@ -825,7 +865,7 @@ func (s *Store) GetStatusPage(ctx context.Context, id, userID int64) (*model.Sta
 	return &sp, nil
 }
 
-func (s *Store) GetStatusPageByToken(ctx context.Context, token string) (*model.StatusPage, error) {
+func (s *SQLiteStore) GetStatusPageByToken(ctx context.Context, token string) (*model.StatusPage, error) {
 	var sp model.StatusPage
 	var passwordHash string
 	var createdAt, updatedAt string
@@ -849,7 +889,7 @@ func (s *Store) GetStatusPageByToken(ctx context.Context, token string) (*model.
 	return &sp, nil
 }
 
-func (s *Store) ListStatusPages(ctx context.Context, userID int64) ([]model.StatusPage, error) {
+func (s *SQLiteStore) ListStatusPages(ctx context.Context, userID int64) ([]model.StatusPage, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, user_id, name, token, description, password_hash, created_at, updated_at
 		FROM status_pages WHERE user_id = ? ORDER BY id`, userID,
@@ -882,7 +922,7 @@ func (s *Store) ListStatusPages(ctx context.Context, userID int64) ([]model.Stat
 	return pages, rows.Err()
 }
 
-func (s *Store) UpdateStatusPage(ctx context.Context, sp *model.StatusPage) error {
+func (s *SQLiteStore) UpdateStatusPage(ctx context.Context, sp *model.StatusPage) error {
 	now := time.Now().UTC().Format(timeFormat)
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE status_pages SET name=?, description=?, password_hash=?, updated_at=?
@@ -896,7 +936,7 @@ func (s *Store) UpdateStatusPage(ctx context.Context, sp *model.StatusPage) erro
 	return s.replaceStatusPageMonitors(ctx, sp.ID, sp.MonitorIDs)
 }
 
-func (s *Store) DeleteStatusPage(ctx context.Context, id, userID int64) error {
+func (s *SQLiteStore) DeleteStatusPage(ctx context.Context, id, userID int64) error {
 	res, err := s.db.ExecContext(ctx,
 		"DELETE FROM status_pages WHERE id = ? AND user_id = ?", id, userID,
 	)
@@ -910,7 +950,7 @@ func (s *Store) DeleteStatusPage(ctx context.Context, id, userID int64) error {
 	return nil
 }
 
-func (s *Store) GetStatusPageMonitors(ctx context.Context, statusPageID int64) ([]model.Monitor, error) {
+func (s *SQLiteStore) GetStatusPageMonitors(ctx context.Context, statusPageID int64) ([]model.Monitor, error) {
 	// Prefix each column with "m." for the JOIN query.
 	prefixed := "m." + strings.ReplaceAll(strings.ReplaceAll(monitorColumns, "\n", ""), "\t", "")
 	prefixed = strings.ReplaceAll(prefixed, ", ", ", m.")
@@ -938,7 +978,7 @@ func (s *Store) GetStatusPageMonitors(ctx context.Context, statusPageID int64) (
 }
 
 // VerifyAlertContactOwnership checks that all given alert contact IDs belong to the specified user.
-func (s *Store) VerifyAlertContactOwnership(ctx context.Context, userID int64, contactIDs []int64) (bool, error) {
+func (s *SQLiteStore) VerifyAlertContactOwnership(ctx context.Context, userID int64, contactIDs []int64) (bool, error) {
 	if len(contactIDs) == 0 {
 		return true, nil
 	}
@@ -965,7 +1005,7 @@ func (s *Store) VerifyAlertContactOwnership(ctx context.Context, userID int64, c
 
 // VerifyMonitorOwnership checks that all given monitor IDs belong to the specified user.
 // Returns false if any monitor does not exist or belongs to another user.
-func (s *Store) VerifyMonitorOwnership(ctx context.Context, userID int64, monitorIDs []int64) (bool, error) {
+func (s *SQLiteStore) VerifyMonitorOwnership(ctx context.Context, userID int64, monitorIDs []int64) (bool, error) {
 	if len(monitorIDs) == 0 {
 		return true, nil
 	}
@@ -990,7 +1030,7 @@ func (s *Store) VerifyMonitorOwnership(ctx context.Context, userID int64, monito
 	return count == len(monitorIDs), nil
 }
 
-func (s *Store) replaceStatusPageMonitors(ctx context.Context, statusPageID int64, monitorIDs []int64) error {
+func (s *SQLiteStore) replaceStatusPageMonitors(ctx context.Context, statusPageID int64, monitorIDs []int64) error {
 	if _, err := s.db.ExecContext(ctx,
 		"DELETE FROM status_page_monitors WHERE status_page_id = ?", statusPageID,
 	); err != nil {
@@ -1008,7 +1048,7 @@ func (s *Store) replaceStatusPageMonitors(ctx context.Context, statusPageID int6
 	return nil
 }
 
-func (s *Store) getStatusPageMonitorIDs(ctx context.Context, statusPageID int64) ([]int64, error) {
+func (s *SQLiteStore) getStatusPageMonitorIDs(ctx context.Context, statusPageID int64) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT monitor_id FROM status_page_monitors WHERE status_page_id = ? ORDER BY sort_order",
 		statusPageID,
@@ -1033,7 +1073,7 @@ func (s *Store) getStatusPageMonitorIDs(ctx context.Context, statusPageID int64)
 // Check Results
 // ---------------------------------------------------------------------------
 
-func (s *Store) InsertCheckResult(ctx context.Context, cr *model.CheckResult) error {
+func (s *SQLiteStore) InsertCheckResult(ctx context.Context, cr *model.CheckResult) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO check_results (monitor_id, status, latency_ms, status_code, message, region, checked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -1043,7 +1083,7 @@ func (s *Store) InsertCheckResult(ctx context.Context, cr *model.CheckResult) er
 	return err
 }
 
-func (s *Store) ListCheckResults(ctx context.Context, monitorID, userID int64, limit, offset int) ([]model.CheckResult, int, error) {
+func (s *SQLiteStore) ListCheckResults(ctx context.Context, monitorID, userID int64, limit, offset int) ([]model.CheckResult, int, error) {
 	// Verify ownership.
 	var ownerID int64
 	err := s.db.QueryRowContext(ctx, "SELECT user_id FROM monitors WHERE id = ?", monitorID).Scan(&ownerID)
@@ -1087,7 +1127,7 @@ func (s *Store) ListCheckResults(ctx context.Context, monitorID, userID int64, l
 	return results, total, rows.Err()
 }
 
-func (s *Store) GetUptimePercentage(ctx context.Context, monitorID, userID int64, hours int) (float64, error) {
+func (s *SQLiteStore) GetUptimePercentage(ctx context.Context, monitorID, userID int64, hours int) (float64, error) {
 	// Verify ownership.
 	var ownerID int64
 	err := s.db.QueryRowContext(ctx, "SELECT user_id FROM monitors WHERE id = ?", monitorID).Scan(&ownerID)
@@ -1120,7 +1160,7 @@ func (s *Store) GetUptimePercentage(ctx context.Context, monitorID, userID int64
 // Alert Contacts
 // ---------------------------------------------------------------------------
 
-func (s *Store) CreateAlertContact(ctx context.Context, ac *model.AlertContact, verifyToken string) (*model.AlertContact, error) {
+func (s *SQLiteStore) CreateAlertContact(ctx context.Context, ac *model.AlertContact, verifyToken string) (*model.AlertContact, error) {
 	now := time.Now().UTC().Format(timeFormat)
 	verified := 1
 	if ac.Type == "email" && verifyToken != "" {
@@ -1146,7 +1186,7 @@ func (s *Store) CreateAlertContact(ctx context.Context, ac *model.AlertContact, 
 }
 
 // VerifyAlertContact marks an alert contact as verified by token.
-func (s *Store) VerifyAlertContact(ctx context.Context, token string) error {
+func (s *SQLiteStore) VerifyAlertContact(ctx context.Context, token string) error {
 	res, err := s.db.ExecContext(ctx,
 		"UPDATE alert_contacts SET verified = 1, verify_token = '' WHERE verify_token = ? AND verified = 0",
 		token,
@@ -1162,7 +1202,7 @@ func (s *Store) VerifyAlertContact(ctx context.Context, token string) error {
 }
 
 // ResendVerification sets a new verify token for an unverified email contact.
-func (s *Store) ResendVerification(ctx context.Context, id, userID int64, token string) (string, error) {
+func (s *SQLiteStore) ResendVerification(ctx context.Context, id, userID int64, token string) (string, error) {
 	var email string
 	err := s.db.QueryRowContext(ctx,
 		"SELECT value FROM alert_contacts WHERE id = ? AND user_id = ? AND type = 'email' AND verified = 0",
@@ -1178,7 +1218,7 @@ func (s *Store) ResendVerification(ctx context.Context, id, userID int64, token 
 	return email, err
 }
 
-func (s *Store) ListAlertContacts(ctx context.Context, userID int64) ([]model.AlertContact, error) {
+func (s *SQLiteStore) ListAlertContacts(ctx context.Context, userID int64) ([]model.AlertContact, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT id, user_id, type, value, name, verified, created_at FROM alert_contacts WHERE user_id = ? ORDER BY id",
 		userID,
@@ -1203,7 +1243,7 @@ func (s *Store) ListAlertContacts(ctx context.Context, userID int64) ([]model.Al
 	return contacts, rows.Err()
 }
 
-func (s *Store) GetAlertContact(ctx context.Context, id, userID int64) (*model.AlertContact, error) {
+func (s *SQLiteStore) GetAlertContact(ctx context.Context, id, userID int64) (*model.AlertContact, error) {
 	var ac model.AlertContact
 	var verified int
 	var createdAt string
@@ -1219,7 +1259,7 @@ func (s *Store) GetAlertContact(ctx context.Context, id, userID int64) (*model.A
 	return &ac, nil
 }
 
-func (s *Store) UpdateAlertContact(ctx context.Context, ac *model.AlertContact, verified int, verifyToken string) error {
+func (s *SQLiteStore) UpdateAlertContact(ctx context.Context, ac *model.AlertContact, verified int, verifyToken string) error {
 	res, err := s.db.ExecContext(ctx,
 		"UPDATE alert_contacts SET type = ?, value = ?, name = ?, verified = ?, verify_token = ? WHERE id = ? AND user_id = ?",
 		ac.Type, ac.Value, ac.Name, verified, verifyToken, ac.ID, ac.UserID,
@@ -1234,7 +1274,7 @@ func (s *Store) UpdateAlertContact(ctx context.Context, ac *model.AlertContact, 
 	return nil
 }
 
-func (s *Store) DeleteAlertContact(ctx context.Context, id, userID int64) error {
+func (s *SQLiteStore) DeleteAlertContact(ctx context.Context, id, userID int64) error {
 	res, err := s.db.ExecContext(ctx,
 		"DELETE FROM alert_contacts WHERE id = ? AND user_id = ?", id, userID,
 	)
@@ -1248,7 +1288,7 @@ func (s *Store) DeleteAlertContact(ctx context.Context, id, userID int64) error 
 	return nil
 }
 
-func (s *Store) GetAlertContactsForMonitor(ctx context.Context, monitorID int64) ([]model.AlertContact, error) {
+func (s *SQLiteStore) GetAlertContactsForMonitor(ctx context.Context, monitorID int64) ([]model.AlertContact, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT ac.id, ac.user_id, ac.type, ac.value, ac.name, ac.verified, ac.created_at
 		FROM alert_contacts ac
@@ -1281,7 +1321,7 @@ func (s *Store) GetAlertContactsForMonitor(ctx context.Context, monitorID int64)
 
 // PruneCheckResults deletes check results older than the given number of days.
 // Returns the number of deleted rows.
-func (s *Store) PruneCheckResults(ctx context.Context, retentionDays int) (int64, error) {
+func (s *SQLiteStore) PruneCheckResults(ctx context.Context, retentionDays int) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`DELETE FROM check_results
 		WHERE checked_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ? || ' days')`,
@@ -1296,7 +1336,7 @@ func (s *Store) PruneCheckResults(ctx context.Context, retentionDays int) (int64
 
 // PruneAlertLogs deletes alert logs older than the given number of days.
 // Returns the number of deleted rows.
-func (s *Store) PruneAlertLogs(ctx context.Context, retentionDays int) (int64, error) {
+func (s *SQLiteStore) PruneAlertLogs(ctx context.Context, retentionDays int) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`DELETE FROM alert_log
 		WHERE sent_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ? || ' days')`,
@@ -1309,7 +1349,7 @@ func (s *Store) PruneAlertLogs(ctx context.Context, retentionDays int) (int64, e
 	return n, nil
 }
 
-func (s *Store) InsertAlertLog(ctx context.Context, al *model.AlertLog) error {
+func (s *SQLiteStore) InsertAlertLog(ctx context.Context, al *model.AlertLog) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO alert_log (monitor_id, alert_contact_id, type, message, sent_at)
 		VALUES (?, ?, ?, ?, ?)`,
@@ -1323,7 +1363,7 @@ func (s *Store) InsertAlertLog(ctx context.Context, al *model.AlertLog) error {
 // Waitlist
 // ---------------------------------------------------------------------------
 
-func (s *Store) AddToWaitlist(ctx context.Context, email string) error {
+func (s *SQLiteStore) AddToWaitlist(ctx context.Context, email string) error {
 	_, err := s.db.ExecContext(ctx,
 		"INSERT OR IGNORE INTO waitlist (email) VALUES (?)", email,
 	)
@@ -1334,7 +1374,7 @@ func (s *Store) AddToWaitlist(ctx context.Context, email string) error {
 // Daily Uptime
 // ---------------------------------------------------------------------------
 
-func (s *Store) GetDailyUptime(ctx context.Context, monitorID int64, days int) ([]model.DailyUptime, error) {
+func (s *SQLiteStore) GetDailyUptime(ctx context.Context, monitorID int64, days int) ([]model.DailyUptime, error) {
 	daysParam := fmt.Sprintf("-%d", days)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT
@@ -1410,7 +1450,7 @@ func boolToInt(b bool) int {
 // ---------------------------------------------------------------------------
 
 // CreateAPIKey stores a new API key (hashed). Returns the created APIKey.
-func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, prefix, keyHash string) (*model.APIKey, error) {
+func (s *SQLiteStore) CreateAPIKey(ctx context.Context, userID int64, name, prefix, keyHash string) (*model.APIKey, error) {
 	now := time.Now().UTC().Format(timeFormat)
 	res, err := s.db.ExecContext(ctx,
 		"INSERT INTO api_keys (user_id, name, prefix, key_hash, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -1436,7 +1476,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, prefix, ke
 }
 
 // ListAPIKeys returns all API keys for a user (no raw keys or hashes).
-func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]model.APIKey, error) {
+func (s *SQLiteStore) ListAPIKeys(ctx context.Context, userID int64) ([]model.APIKey, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT id, user_id, name, prefix, last_used_at, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC",
 		userID,
@@ -1466,7 +1506,7 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]model.APIKey, 
 }
 
 // DeleteAPIKey deletes an API key by ID for a user.
-func (s *Store) DeleteAPIKey(ctx context.Context, id, userID int64) error {
+func (s *SQLiteStore) DeleteAPIKey(ctx context.Context, id, userID int64) error {
 	res, err := s.db.ExecContext(ctx,
 		"DELETE FROM api_keys WHERE id = ? AND user_id = ?",
 		id, userID,
@@ -1484,7 +1524,7 @@ func (s *Store) DeleteAPIKey(ctx context.Context, id, userID int64) error {
 // GetUserIDByAPIKey looks up a user by API key. It extracts the prefix,
 // queries candidate rows, compares SHA-256 hashes, updates last_used_at
 // on match, and returns the user ID.
-func (s *Store) GetUserIDByAPIKey(ctx context.Context, key string) (int64, error) {
+func (s *SQLiteStore) GetUserIDByAPIKey(ctx context.Context, key string) (int64, error) {
 	if len(key) < 8 {
 		return 0, fmt.Errorf("invalid api key")
 	}

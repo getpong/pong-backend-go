@@ -36,7 +36,7 @@ func main() {
 	dbPath := fmt.Sprintf("/tmp/ghm-bench-%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
 
-	db, err := store.New(dbPath, "")
+	db, err := store.NewSQLite(dbPath, "")
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
@@ -155,7 +155,7 @@ func main() {
 	fmt.Printf("At 30s interval:   %d monitors\n", int(checksPerSec*30))
 }
 
-func countResults(db *store.Store) int64 {
+func countResults(db *store.SQLiteStore) int64 {
 	var count int64
 	db.DB().QueryRow("SELECT COUNT(*) FROM check_results").Scan(&count)
 	return count

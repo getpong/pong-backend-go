@@ -24,7 +24,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := store.New(cfg.DatabasePath, cfg.EncryptionKey)
+	db, err := store.NewSQLite(cfg.DatabasePath, cfg.EncryptionKey)
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
