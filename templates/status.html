@@ -184,6 +184,11 @@
             color: #8b8d94;
         }
 
+        .badge-paused {
+            background: rgba(139, 141, 148, 0.1);
+            color: #8b8d94;
+        }
+
         .footer {
             text-align: center;
             padding: 24px;
@@ -294,8 +299,8 @@
         {{$allUp := true}}
         {{$allDown := true}}
         {{range .Monitors}}
-            {{if ne .Monitor.Status "up"}}{{$allUp = false}}{{end}}
-            {{if eq .Monitor.Status "up"}}{{$allDown = false}}{{end}}
+            {{if and .Monitor.Enabled (ne .Monitor.Status "up")}}{{$allUp = false}}{{end}}
+            {{if or (not .Monitor.Enabled) (eq .Monitor.Status "up")}}{{$allDown = false}}{{end}}
         {{end}}
 
         {{if $allUp}}
@@ -325,7 +330,9 @@
                     </div>
                     <div class="monitor-meta">
                         <span class="uptime {{if gt .UptimePercent 99.0}}uptime-green{{else if gt .UptimePercent 95.0}}uptime-yellow{{else}}uptime-red{{end}}">{{printf "%.2f" .UptimePercent}}%</span>
-                        {{if eq .Monitor.Status "up"}}
+                        {{if not .Monitor.Enabled}}
+                        <span class="badge badge-paused">Paused</span>
+                        {{else if eq .Monitor.Status "up"}}
                         <span class="badge badge-up">Operational</span>
                         {{else if eq .Monitor.Status "down"}}
                         <span class="badge badge-down">Down</span>
@@ -361,5 +368,6 @@
     <div class="footer">
         Powered by <a href="https://www.getpong.dev">Pong</a>
     </div>
+
 </body>
 </html>
