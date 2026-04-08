@@ -34,6 +34,7 @@ type Monitor struct {
 	HeartbeatLastPing *time.Time `json:"heartbeat_last_ping,omitempty"`
 	SSLWarnDays       int        `json:"ssl_warn_days,omitempty"`
 	SSLExpiryAt       *time.Time `json:"ssl_expiry_at,omitempty"`
+	Protocol           string     `json:"protocol,omitempty"`
 	HttpAuthType       string     `json:"http_auth_type,omitempty"`
 	HttpAuth           string     `json:"-"`
 	HttpAuthConfigured bool       `json:"http_auth_configured,omitempty"`

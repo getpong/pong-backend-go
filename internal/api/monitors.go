@@ -43,6 +43,7 @@ type createMonitorRequest struct {
 	ConfirmationCount *int    `json:"confirmation_count"`
 	HeartbeatSecret   string  `json:"heartbeat_secret,omitempty"`
 	SSLWarnDays       *int    `json:"ssl_warn_days"`
+	Protocol          string  `json:"protocol,omitempty"`
 	AlertContactIDs   []int64 `json:"alert_contact_ids,omitempty"`
 	HttpAuthType      string  `json:"http_auth_type,omitempty"`
 	HttpAuthUsername  string  `json:"http_auth_username,omitempty"`
@@ -65,6 +66,7 @@ type updateMonitorRequest struct {
 	ConfirmationCount *int    `json:"confirmation_count,omitempty"`
 	HeartbeatSecret   *string `json:"heartbeat_secret,omitempty"`
 	SSLWarnDays       *int    `json:"ssl_warn_days,omitempty"`
+	Protocol          *string `json:"protocol,omitempty"`
 	AlertContactIDs   []int64 `json:"alert_contact_ids,omitempty"`
 	HttpAuthType      *string `json:"http_auth_type,omitempty"`
 	HttpAuthUsername  *string `json:"http_auth_username,omitempty"`
@@ -136,7 +138,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	timeoutSecs := 30
+	timeoutSecs := 5
 	if req.TimeoutSecs != nil {
 		timeoutSecs = *req.TimeoutSecs
 	}
@@ -151,6 +153,19 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	sslWarnDays := 30
 	if req.SSLWarnDays != nil && *req.SSLWarnDays > 0 {
 		sslWarnDays = *req.SSLWarnDays
+	}
+
+	protocol := "tcp"
+	if req.Protocol != "" {
+		if req.Protocol != "tcp" && req.Protocol != "udp" {
+			respondError(w, http.StatusBadRequest, "protocol must be tcp or udp")
+			return
+		}
+		if req.Type != "port" {
+			respondError(w, http.StatusBadRequest, "protocol is only supported for port monitors")
+			return
+		}
+		protocol = req.Protocol
 	}
 
 	var heartbeatToken string
@@ -214,6 +229,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		SSLWarnDays:       sslWarnDays,
 		HeartbeatToken:    heartbeatToken,
 		HeartbeatSecret:   req.HeartbeatSecret,
+		Protocol:          protocol,
 		HttpAuthType:      httpAuthType,
 		HttpAuth:          httpAuth,
 		Enabled:           true,
@@ -321,6 +337,14 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.SSLWarnDays != nil {
 		existing.SSLWarnDays = *req.SSLWarnDays
+	}
+	if req.Protocol != nil {
+		p := *req.Protocol
+		if p != "tcp" && p != "udp" {
+			respondError(w, http.StatusBadRequest, "protocol must be tcp or udp")
+			return
+		}
+		existing.Protocol = p
 	}
 	if req.HttpAuthType != nil {
 		authType := *req.HttpAuthType

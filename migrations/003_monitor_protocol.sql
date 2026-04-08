@@ -1,0 +1,1 @@
+ALTER TABLE monitors ADD COLUMN protocol TEXT NOT NULL DEFAULT 'tcp';

@@ -278,11 +278,13 @@ func (c *HeartbeatChecker) Check(ctx context.Context, m model.Monitor) model.Che
 	return result
 }
 
-// PortChecker checks if a TCP port is open and accepting connections.
+// PortChecker checks if a TCP or UDP port is open.
 type PortChecker struct{}
 
-// Check performs a TCP dial to the monitor's target (host:port) and reports
-// whether the connection succeeds within the configured timeout.
+// Check performs a TCP or UDP probe to the monitor's target (host:port) and
+// reports whether the connection succeeds within the configured timeout.
+// For UDP, a small probe packet is sent; if no ICMP rejection is received
+// within the timeout the port is considered open.
 func (c *PortChecker) Check(ctx context.Context, m model.Monitor) model.CheckResult {
 	now := time.Now()
 	result := model.CheckResult{
@@ -302,8 +304,55 @@ func (c *PortChecker) Check(ctx context.Context, m model.Monitor) model.CheckRes
 		timeout = 10 * time.Second
 	}
 
+	protocol := m.Protocol
+	if protocol == "" {
+		protocol = "tcp"
+	}
+
 	dialer := &net.Dialer{Timeout: timeout}
 	start := time.Now()
+
+	if protocol == "udp" {
+		conn, err := dialer.DialContext(ctx, "udp", target)
+		latency := time.Since(start)
+		result.LatencyMs = int(latency.Milliseconds())
+
+		if err != nil {
+			result.Status = "down"
+			result.Message = fmt.Sprintf("connection failed: %v", err)
+			return result
+		}
+		defer conn.Close()
+
+		// Send a small probe and wait for a response or timeout.
+		conn.SetDeadline(time.Now().Add(timeout))
+		if _, err := conn.Write([]byte{0}); err != nil {
+			result.Status = "down"
+			result.Message = fmt.Sprintf("write failed: %v", err)
+			return result
+		}
+
+		buf := make([]byte, 1)
+		_, err = conn.Read(buf)
+		if err != nil {
+			// Timeout means no ICMP rejection — port is likely open (or filtered).
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				result.Status = "up"
+				result.Message = fmt.Sprintf("udp port open (no rejection), latency %dms", result.LatencyMs)
+				return result
+			}
+			// Any other error (e.g. ICMP port unreachable) means closed.
+			result.Status = "down"
+			result.Message = fmt.Sprintf("port closed: %v", err)
+			return result
+		}
+
+		result.Status = "up"
+		result.Message = fmt.Sprintf("udp port open (responded), latency %dms", result.LatencyMs)
+		return result
+	}
+
+	// TCP
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	latency := time.Since(start)
 	result.LatencyMs = int(latency.Milliseconds())
