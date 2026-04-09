@@ -15,6 +15,26 @@ import (
 	"github.com/getpong/pong-backend-go/internal/model"
 )
 
+// isTimeout returns true if the error is a timeout (context deadline or net timeout).
+func isTimeout(err error) bool {
+	if err == context.DeadlineExceeded {
+		return true
+	}
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return true
+	}
+	return false
+}
+
+// timeoutMsg returns a user-friendly message for timeout errors, or formats
+// the original error if it's not a timeout.
+func timeoutMsg(err error, timeoutSecs int) string {
+	if isTimeout(err) {
+		return fmt.Sprintf("timed out after %ds", timeoutSecs)
+	}
+	return err.Error()
+}
+
 // Checker defines the interface for performing health checks on monitors.
 type Checker interface {
 	Check(ctx context.Context, m model.Monitor) model.CheckResult
@@ -97,7 +117,7 @@ func (h *HTTPChecker) Check(ctx context.Context, m model.Monitor) model.CheckRes
 
 	if err != nil {
 		result.Status = "down"
-		result.Message = fmt.Sprintf("request failed: %v", err)
+		result.Message = fmt.Sprintf("request failed: %s", timeoutMsg(err, m.TimeoutSecs))
 		return result
 	}
 	defer resp.Body.Close()
@@ -202,7 +222,7 @@ func (c *SSLChecker) Check(ctx context.Context, m model.Monitor) model.CheckResu
 
 	if err != nil {
 		result.Status = "down"
-		result.Message = fmt.Sprintf("TLS connection failed: %v", err)
+		result.Message = fmt.Sprintf("TLS connection failed: %s", timeoutMsg(err, m.TimeoutSecs))
 		return result
 	}
 	defer conn.Close()
@@ -319,7 +339,7 @@ func (c *PortChecker) Check(ctx context.Context, m model.Monitor) model.CheckRes
 
 		if err != nil {
 			result.Status = "down"
-			result.Message = fmt.Sprintf("connection failed: %v", err)
+			result.Message = fmt.Sprintf("connection failed: %s", timeoutMsg(err, m.TimeoutSecs))
 			return result
 		}
 		defer conn.Close()
@@ -359,7 +379,7 @@ func (c *PortChecker) Check(ctx context.Context, m model.Monitor) model.CheckRes
 
 	if err != nil {
 		result.Status = "down"
-		result.Message = fmt.Sprintf("connection failed: %v", err)
+		result.Message = fmt.Sprintf("connection failed: %s", timeoutMsg(err, m.TimeoutSecs))
 		return result
 	}
 	conn.Close()
