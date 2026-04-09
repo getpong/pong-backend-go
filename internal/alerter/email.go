@@ -11,7 +11,7 @@ import (
 
 // SendEmail sends an alert email using SMTP with PlainAuth.
 func SendEmail(cfg *config.Config, to string, event model.StateChangeEvent) error {
-	subject := fmt.Sprintf("[Health Monitor] %s is %s", event.Monitor.Name, strings.ToUpper(event.NewStatus))
+	subject := fmt.Sprintf("[Pong Monitor] %s is %s", event.Monitor.Name, strings.ToUpper(event.NewStatus))
 
 	body := fmt.Sprintf(
 		"Monitor: %s\nTarget: %s\nStatus: %s -> %s\nMessage: %s\nChecked at: %s",
@@ -24,7 +24,7 @@ func SendEmail(cfg *config.Config, to string, event model.StateChangeEvent) erro
 	)
 
 	msg := fmt.Sprintf(
-		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s",
+		"From: Pong <%s>\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s",
 		cfg.SMTPFrom,
 		to,
 		subject,
