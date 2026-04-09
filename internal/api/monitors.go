@@ -572,6 +572,30 @@ func (h *MonitorHandler) DailyUptime(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"monitor_id": id, "days": days, "daily": data})
 }
 
+// CheckNow resets the monitor's last_checked_at so the scheduler picks it up
+// on the next tick. Returns 202 Accepted.
+func (h *MonitorHandler) CheckNow(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if _, err := h.store.GetMonitor(r.Context(), id, userID); err != nil {
+		respondError(w, http.StatusNotFound, "monitor not found")
+		return
+	}
+
+	if err := h.store.ResetLastChecked(r.Context(), id, userID); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to schedule check")
+		return
+	}
+
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+}
+
 // queryInt reads an integer query parameter with a default value.
 func queryInt(r *http.Request, key string, def int) int {
 	v := r.URL.Query().Get(key)

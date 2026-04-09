@@ -53,6 +53,7 @@ func NewRouter(s store.APIStore, cfg *config.Config) http.Handler {
 	mux.Handle("GET /api/v1/monitors/{id}/results", authMW(http.HandlerFunc(monitors.Results)))
 	mux.Handle("GET /api/v1/monitors/{id}/uptime", authMW(http.HandlerFunc(monitors.Uptime)))
 	mux.Handle("GET /api/v1/monitors/{id}/uptime/daily", authMW(http.HandlerFunc(monitors.DailyUptime)))
+	mux.Handle("POST /api/v1/monitors/{id}/check", authMW(http.HandlerFunc(monitors.CheckNow)))
 
 	// Alert contact routes (protected)
 	mux.Handle("GET /api/v1/alert-contacts", authMW(http.HandlerFunc(alerts.ListContacts)))

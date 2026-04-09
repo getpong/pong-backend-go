@@ -495,6 +495,20 @@ func (s *SQLiteStore) DeleteMonitor(ctx context.Context, id, userID int64) error
 	return nil
 }
 
+func (s *SQLiteStore) ResetLastChecked(ctx context.Context, id, userID int64) error {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE monitors SET last_checked_at = NULL WHERE id = ? AND user_id = ?", id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *SQLiteStore) SetMonitorEnabled(ctx context.Context, id, userID int64, enabled bool) error {
 	now := time.Now().UTC().Format(timeFormat)
 	res, err := s.db.ExecContext(ctx,

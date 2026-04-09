@@ -56,6 +56,7 @@ type APIStore interface {
 	UpdateMonitor(ctx context.Context, m *model.Monitor) error
 	DeleteMonitor(ctx context.Context, id, userID int64) error
 	SetMonitorEnabled(ctx context.Context, id, userID int64, enabled bool) error
+	ResetLastChecked(ctx context.Context, id, userID int64) error
 	CountMonitors(ctx context.Context, userID int64) (int, error)
 
 	// Check results & uptime
