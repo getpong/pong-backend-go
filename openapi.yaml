@@ -102,7 +102,13 @@ components:
         timeout_secs:
           type: integer
           description: Seconds before a check is considered timed out.
-          example: 30
+          example: 5
+        protocol:
+          type: string
+          enum: [tcp, udp]
+          description: Network protocol for port monitors.
+          default: tcp
+          example: "tcp"
         keyword:
           type: string
           nullable: true
@@ -198,6 +204,15 @@ components:
             type: integer
           description: IDs of alert contacts to notify when the monitor changes state.
           example: [1, 3]
+        http_auth_type:
+          type: string
+          enum: [none, basic, header]
+          description: Type of HTTP authentication configured on this monitor.
+          example: "none"
+        http_auth_configured:
+          type: boolean
+          description: Whether HTTP authentication credentials are configured. Credentials are never returned in responses.
+          example: false
 
     MonitorCreate:
       type: object
@@ -227,8 +242,8 @@ components:
         timeout_secs:
           type: integer
           description: Seconds before a check is considered timed out.
-          default: 30
-          example: 30
+          default: 5
+          example: 5
         keyword:
           type: string
           description: Keyword to search for (keyword monitors only).
@@ -267,6 +282,33 @@ components:
           type: string
           description: Optional secret for heartbeat monitors. If set, pings must include the X-Secret header with this value.
           example: "a3f8b2c1d4e5f6a7b8c9d0e1f2a3b4c5"
+        protocol:
+          type: string
+          enum: [tcp, udp]
+          description: Network protocol for port monitors.
+          default: tcp
+          example: "tcp"
+        http_auth_type:
+          type: string
+          enum: [none, basic, header]
+          description: Type of HTTP authentication. Requires ENCRYPTION_KEY to be configured.
+          example: "basic"
+        http_auth_username:
+          type: string
+          description: Username for Basic Auth (required when http_auth_type is "basic").
+          example: "admin"
+        http_auth_password:
+          type: string
+          description: Password for Basic Auth (required when http_auth_type is "basic").
+          example: "secret123"
+        http_auth_header:
+          type: string
+          description: Header name for custom header auth (required when http_auth_type is "header").
+          example: "X-API-Key"
+        http_auth_value:
+          type: string
+          description: Header value for custom header auth (required when http_auth_type is "header").
+          example: "my-api-key"
         alert_contact_ids:
           type: array
           items:
@@ -333,6 +375,32 @@ components:
           type: string
           description: Optional secret for heartbeat monitors. If set, pings must include the X-Secret header with this value.
           example: "a3f8b2c1d4e5f6a7b8c9d0e1f2a3b4c5"
+        protocol:
+          type: string
+          enum: [tcp, udp]
+          description: Network protocol for port monitors.
+          example: "tcp"
+        http_auth_type:
+          type: string
+          enum: [none, basic, header]
+          description: Type of HTTP authentication. Set to "none" to clear existing credentials.
+          example: "none"
+        http_auth_username:
+          type: string
+          description: Username for Basic Auth.
+          example: "admin"
+        http_auth_password:
+          type: string
+          description: Password for Basic Auth.
+          example: "secret123"
+        http_auth_header:
+          type: string
+          description: Header name for custom header auth.
+          example: "X-API-Key"
+        http_auth_value:
+          type: string
+          description: Header value for custom header auth.
+          example: "my-api-key"
         alert_contact_ids:
           type: array
           items:
@@ -907,6 +975,33 @@ paths:
                   enabled:
                     type: boolean
                     example: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/monitors/{id}/check:
+    post:
+      operationId: checkNow
+      tags: [Monitors]
+      summary: Trigger an immediate check
+      description: |
+        Schedules the monitor to be checked on the next scheduler tick (within 1 second).
+        The check runs through the normal worker pipeline. Poll the results endpoint
+        to see the outcome.
+      parameters:
+        - $ref: "#/components/parameters/MonitorId"
+      responses:
+        "202":
+          description: Check queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "queued"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":

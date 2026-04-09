@@ -12,8 +12,8 @@ That's it. Open `http://localhost:8080/healthz` to verify.
 
 ## Features
 
-- **HTTP monitoring** — status code checks, keyword/regex matching in response body
-- **TCP port monitoring** — check if databases, Redis, game servers are accepting connections
+- **HTTP monitoring** — status code checks, keyword/regex matching, optional Basic Auth or custom header authentication
+- **TCP/UDP port monitoring** — check if databases, Redis, DNS servers, game servers are accepting connections
 - **SSL certificate monitoring** — alert before certificates expire
 - **Heartbeat monitoring** — your services ping Pong; alert if they stop
 - **Alerts** — webhook, Slack, email. Fire on state transitions only (no spam)
@@ -28,7 +28,7 @@ That's it. Open `http://localhost:8080/healthz` to verify.
 | Type | What it checks |
 |------|---------------|
 | `http` | HTTP/HTTPS endpoint, status code, optional keyword/regex |
-| `port` | TCP connection to host:port |
+| `port` | TCP or UDP connection to host:port |
 | `ssl` | TLS certificate expiry date |
 | `heartbeat` | Expects periodic pings, alerts if they stop |
 
@@ -111,8 +111,11 @@ ADMIN_API_KEY=pong_mykey ./pong
 | `SMTP_FROM_NOREPLY` | — | Sender for verification emails |
 | `ENFORCE_PLAN_LIMITS` | `false` | Enable plan-based resource limits |
 | `REQUIRE_EMAIL_VERIFICATION` | `false` | Require email contacts to verify before receiving alerts |
+| `ENCRYPTION_KEY` | — | 64-char hex key for encrypting monitor credentials (required for HTTP auth) |
 
 Either `ADMIN_API_KEY` or `AUTH0_DOMAIN` must be set.
+
+Generate an encryption key with `openssl rand -hex 32`.
 
 ## Architecture
 

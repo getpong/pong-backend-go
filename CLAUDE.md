@@ -11,10 +11,11 @@ Uptime/health monitoring REST API built in Go.
 
 ## Monitor Types
 
-- **HTTP/HTTPS** — GET/HEAD request, status code check
-- **Port (TCP dial)** — connects to host:port, checks if open
+- **HTTP/HTTPS** — GET/HEAD request, status code check, optional Basic Auth or custom header auth
+- **Port (TCP/UDP)** — connects to host:port, checks if open (TCP dial or UDP probe)
 - **Keyword** — HTTP request with keyword or regex match in response body
 - **Heartbeat** — expects periodic pings; optional `X-Secret` header validation
+- **SSL** — TLS certificate expiry check with configurable warning threshold
 
 ## Project Structure
 
@@ -22,7 +23,8 @@ Uptime/health monitoring REST API built in Go.
 - `internal/api/` — HTTP handlers, middleware, router
 - `internal/checker/` — health check engine, scheduler, worker pool
 - `internal/alerter/` — alert dispatcher (webhook, email, slack)
-- `internal/store/` — SQLite CRUD queries, migrations runner
+- `internal/store/` — store interfaces (`iface.go`) and SQLite implementation (`sqlite.go`), migrations runner
+- `internal/crypto/` — AES-256-GCM encryption for monitor credentials
 - `internal/model/` — domain types
 - `internal/config/` — env var parsing
 - `internal/pruner/` — data pruning for check results and alert logs
@@ -30,7 +32,7 @@ Uptime/health monitoring REST API built in Go.
 
 ## API Routes
 
-- `/api/v1/monitors/` — monitor CRUD, pause/resume
+- `/api/v1/monitors/` — monitor CRUD, pause/resume, check now
 - `/api/v1/alert-contacts/` — alert contact CRUD, email verification, test button
 - `/api/v1/api-keys/` — API key management (`pong_` prefixed keys)
 - `/api/v1/status-pages/` — status page CRUD (token-based public URLs, optional password)
@@ -58,6 +60,9 @@ Uptime/health monitoring REST API built in Go.
 - Alert contacts require email verification before alerts are sent
 - Scheduler uses a tick-based design (1s tick, queries DB for due monitors)
 - Worker pool is bounded (default 20 workers, buffered channel)
+- Post-check writes are batched in a single transaction (insert result + update monitor status/fails)
+- Store layer uses interfaces (CheckerStore, AlerterStore, PrunerStore, APIStore) for backend swappability
+- Monitor credentials encrypted at rest with AES-256-GCM (ENCRYPTION_KEY env var)
 - Status pages use token-based public URLs with optional password protection
 - Pruner runs on a schedule, deleting check results and alert logs older than configurable retention period
 - Data pruning: check results and alert logs are pruned based on `RETENTION_DAYS`
@@ -82,5 +87,6 @@ Uptime/health monitoring REST API built in Go.
 - `RETENTION_DAYS` (default: `90`) — how long to keep check results and alert logs
 - `ENFORCE_PLAN_LIMITS` (default: `false`) — enable plan-based resource limits
 - `REQUIRE_EMAIL_VERIFICATION` (default: `false`) — require email contacts to verify before receiving alerts
+- `ENCRYPTION_KEY` — 64-char hex key for AES-256-GCM encryption of monitor credentials (required for HTTP auth)
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — for email alerts
 - `SMTP_FROM_NOREPLY` — noreply sender address for verification emails
