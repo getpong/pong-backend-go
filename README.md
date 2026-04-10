@@ -136,4 +136,4 @@ Don't want to self-host? Use the hosted version at [getpong.dev](https://www.get
 
 ## License
 
-[Business Source License 1.1](LICENSE) — free to use, self-host, and modify.
+[MIT](LICENSE)
