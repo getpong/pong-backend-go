@@ -32,6 +32,11 @@ That's it. Open `http://localhost:8080/healthz` to verify.
 | `ssl` | TLS certificate expiry date |
 | `heartbeat` | Expects periodic pings, alerts if they stop |
 
+
+## Status pages
+Status pages are rendered directely via template files, here's and example.
+![Public status page example](doc/images/pong-statuspage.png)
+
 ## API Usage
 
 ```bash
