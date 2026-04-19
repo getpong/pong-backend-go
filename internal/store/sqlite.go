@@ -112,12 +112,29 @@ func sha256Hex(s string) string {
 }
 
 // Migrate reads .sql files from migrationsDir and executes unapplied ones.
+// All migrations run on a single dedicated connection with foreign_keys
+// temporarily disabled, so migrations may rebuild tables without cascading
+// child rows through ON DELETE CASCADE foreign keys.
 func (s *SQLiteStore) Migrate(migrationsDir string) error {
-	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer func() {
+		// Restore FK enforcement before returning the connection to the pool.
+		conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+		conn.Close()
+	}()
+
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("disable foreign keys: %w", err)
+	}
+
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		filename TEXT PRIMARY KEY,
 		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-	)`)
-	if err != nil {
+	)`); err != nil {
 		return fmt.Errorf("create schema_migrations table: %w", err)
 	}
 
@@ -139,23 +156,23 @@ func (s *SQLiteStore) Migrate(migrationsDir string) error {
 	// and record all other migrations as already applied — self-hosters get
 	// a clean DB without running historical fixup migrations.
 	var migCount int
-	s.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&migCount)
+	conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&migCount)
 	if migCount == 0 && len(files) > 0 {
 		baseline := files[0]
 		content, err := os.ReadFile(filepath.Join(migrationsDir, baseline))
 		if err != nil {
 			return fmt.Errorf("read baseline %s: %w", baseline, err)
 		}
-		tx, err := s.db.Begin()
+		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin baseline tx: %w", err)
 		}
-		if _, err := tx.Exec(string(content)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(content)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("execute baseline %s: %w", baseline, err)
 		}
 		for _, name := range files {
-			if _, err := tx.Exec("INSERT INTO schema_migrations (filename) VALUES (?)", name); err != nil {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename) VALUES (?)", name); err != nil {
 				tx.Rollback()
 				return fmt.Errorf("record baseline migration %s: %w", name, err)
 			}
@@ -168,8 +185,7 @@ func (s *SQLiteStore) Migrate(migrationsDir string) error {
 
 	for _, name := range files {
 		var count int
-		err := s.db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE filename = ?", name).Scan(&count)
-		if err != nil {
+		if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE filename = ?", name).Scan(&count); err != nil {
 			return fmt.Errorf("check migration %s: %w", name, err)
 		}
 		if count > 0 {
@@ -181,17 +197,17 @@ func (s *SQLiteStore) Migrate(migrationsDir string) error {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
 
-		tx, err := s.db.Begin()
+		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin transaction for %s: %w", name, err)
 		}
 
-		if _, err := tx.Exec(string(content)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(content)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("execute migration %s: %w", name, err)
 		}
 
-		if _, err := tx.Exec("INSERT INTO schema_migrations (filename) VALUES (?)", name); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename) VALUES (?)", name); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("record migration %s: %w", name, err)
 		}
