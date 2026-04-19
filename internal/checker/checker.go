@@ -298,6 +298,129 @@ func (c *HeartbeatChecker) Check(ctx context.Context, m model.Monitor) model.Che
 	return result
 }
 
+// DNSChecker resolves a DNS record and optionally validates the response.
+type DNSChecker struct{}
+
+// Check performs a DNS lookup for the configured record type. If
+// DnsExpectedValue is set, at least one result must contain it (case-insensitive
+// substring match). If DnsResolver is set, the query is sent to that resolver
+// instead of the system default.
+func (c *DNSChecker) Check(ctx context.Context, m model.Monitor) model.CheckResult {
+	now := time.Now()
+	result := model.CheckResult{
+		MonitorID: m.ID,
+		CheckedAt: now,
+	}
+
+	timeout := time.Duration(m.TimeoutSecs) * time.Second
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	recordType := strings.ToUpper(m.DnsRecordType)
+	if recordType == "" {
+		recordType = "A"
+	}
+
+	resolver := net.DefaultResolver
+	if m.DnsResolver != "" {
+		addr := m.DnsResolver
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			addr = net.JoinHostPort(addr, "53")
+		}
+		resolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{Timeout: timeout}
+				return d.DialContext(ctx, "udp", addr)
+			},
+		}
+	}
+
+	start := time.Now()
+	var records []string
+	var err error
+
+	switch recordType {
+	case "A":
+		ips, lerr := resolver.LookupIP(ctx, "ip4", m.Target)
+		err = lerr
+		for _, ip := range ips {
+			records = append(records, ip.String())
+		}
+	case "AAAA":
+		ips, lerr := resolver.LookupIP(ctx, "ip6", m.Target)
+		err = lerr
+		for _, ip := range ips {
+			records = append(records, ip.String())
+		}
+	case "MX":
+		mxs, lerr := resolver.LookupMX(ctx, m.Target)
+		err = lerr
+		for _, mx := range mxs {
+			records = append(records, fmt.Sprintf("%d %s", mx.Pref, mx.Host))
+		}
+	case "TXT":
+		txts, lerr := resolver.LookupTXT(ctx, m.Target)
+		err = lerr
+		records = txts
+	case "CNAME":
+		cname, lerr := resolver.LookupCNAME(ctx, m.Target)
+		err = lerr
+		if cname != "" {
+			records = append(records, cname)
+		}
+	case "NS":
+		nss, lerr := resolver.LookupNS(ctx, m.Target)
+		err = lerr
+		for _, ns := range nss {
+			records = append(records, ns.Host)
+		}
+	default:
+		result.Status = "down"
+		result.Message = fmt.Sprintf("unsupported DNS record type: %s", recordType)
+		return result
+	}
+
+	latency := time.Since(start)
+	result.LatencyMs = int(latency.Milliseconds())
+
+	if err != nil {
+		result.Status = "down"
+		result.Message = fmt.Sprintf("DNS lookup failed: %s", timeoutMsg(err, m.TimeoutSecs))
+		return result
+	}
+
+	if len(records) == 0 {
+		result.Status = "down"
+		result.Message = fmt.Sprintf("no %s records found for %s", recordType, m.Target)
+		return result
+	}
+
+	if m.DnsExpectedValue != "" {
+		expected := strings.ToLower(m.DnsExpectedValue)
+		matched := false
+		for _, r := range records {
+			if strings.Contains(strings.ToLower(r), expected) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			result.Status = "down"
+			result.Message = fmt.Sprintf("expected %q not found in %s records: %s",
+				m.DnsExpectedValue, recordType, strings.Join(records, ", "))
+			return result
+		}
+	}
+
+	result.Status = "up"
+	result.Message = fmt.Sprintf("%s records: %s", recordType, strings.Join(records, ", "))
+	return result
+}
+
 // PortChecker checks if a TCP or UDP port is open.
 type PortChecker struct{}
 

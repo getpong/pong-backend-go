@@ -38,6 +38,9 @@ type Monitor struct {
 	HttpAuthType       string     `json:"http_auth_type,omitempty"`
 	HttpAuth           string     `json:"-"`
 	HttpAuthConfigured bool       `json:"http_auth_configured,omitempty"`
+	DnsRecordType      string     `json:"dns_record_type,omitempty"`
+	DnsExpectedValue   string     `json:"dns_expected_value,omitempty"`
+	DnsResolver        string     `json:"dns_resolver,omitempty"`
 	Enabled           bool       `json:"enabled"`
 	Status          string     `json:"status"`
 	LastCheckedAt   *time.Time `json:"last_checked_at,omitempty"`

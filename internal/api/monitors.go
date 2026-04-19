@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/getpong/pong-backend-go/internal/config"
 	"github.com/getpong/pong-backend-go/internal/model"
@@ -15,7 +16,11 @@ import (
 
 var validMonitorTypes = map[string]bool{
 	"http": true, "keyword": true, "ssl": true, "heartbeat": true,
-	"port": true,
+	"port": true, "dns": true,
+}
+
+var validDnsRecordTypes = map[string]bool{
+	"A": true, "AAAA": true, "MX": true, "TXT": true, "CNAME": true, "NS": true,
 }
 
 // MonitorHandler handles monitor CRUD and related endpoints.
@@ -50,6 +55,9 @@ type createMonitorRequest struct {
 	HttpAuthPassword  string  `json:"http_auth_password,omitempty"`
 	HttpAuthHeader    string  `json:"http_auth_header,omitempty"`
 	HttpAuthValue     string  `json:"http_auth_value,omitempty"`
+	DnsRecordType     string  `json:"dns_record_type,omitempty"`
+	DnsExpectedValue  string  `json:"dns_expected_value,omitempty"`
+	DnsResolver       string  `json:"dns_resolver,omitempty"`
 }
 
 type updateMonitorRequest struct {
@@ -73,6 +81,9 @@ type updateMonitorRequest struct {
 	HttpAuthPassword  *string `json:"http_auth_password,omitempty"`
 	HttpAuthHeader    *string `json:"http_auth_header,omitempty"`
 	HttpAuthValue     *string `json:"http_auth_value,omitempty"`
+	DnsRecordType     *string `json:"dns_record_type,omitempty"`
+	DnsExpectedValue  *string `json:"dns_expected_value,omitempty"`
+	DnsResolver       *string `json:"dns_resolver,omitempty"`
 }
 
 var validHttpAuthTypes = map[string]bool{
@@ -168,6 +179,22 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		protocol = req.Protocol
 	}
 
+	dnsRecordType := ""
+	if req.Type == "dns" {
+		dnsRecordType = "A"
+		if req.DnsRecordType != "" {
+			rt := strings.ToUpper(req.DnsRecordType)
+			if !validDnsRecordTypes[rt] {
+				respondError(w, http.StatusBadRequest, "dns_record_type must be A, AAAA, MX, TXT, CNAME, or NS")
+				return
+			}
+			dnsRecordType = rt
+		}
+	} else if req.DnsRecordType != "" || req.DnsExpectedValue != "" || req.DnsResolver != "" {
+		respondError(w, http.StatusBadRequest, "DNS fields are only supported for dns monitors")
+		return
+	}
+
 	var heartbeatToken string
 	if req.Type == "heartbeat" {
 		b := make([]byte, 16)
@@ -232,6 +259,9 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Protocol:          protocol,
 		HttpAuthType:      httpAuthType,
 		HttpAuth:          httpAuth,
+		DnsRecordType:     dnsRecordType,
+		DnsExpectedValue:  req.DnsExpectedValue,
+		DnsResolver:       req.DnsResolver,
 		Enabled:           true,
 		Status:            "unknown",
 		AlertContactIDs:   req.AlertContactIDs,
@@ -345,6 +375,32 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		existing.Protocol = p
+	}
+	if req.DnsRecordType != nil {
+		if existing.Type != "dns" {
+			respondError(w, http.StatusBadRequest, "DNS fields are only supported for dns monitors")
+			return
+		}
+		rt := strings.ToUpper(*req.DnsRecordType)
+		if !validDnsRecordTypes[rt] {
+			respondError(w, http.StatusBadRequest, "dns_record_type must be A, AAAA, MX, TXT, CNAME, or NS")
+			return
+		}
+		existing.DnsRecordType = rt
+	}
+	if req.DnsExpectedValue != nil {
+		if existing.Type != "dns" {
+			respondError(w, http.StatusBadRequest, "DNS fields are only supported for dns monitors")
+			return
+		}
+		existing.DnsExpectedValue = *req.DnsExpectedValue
+	}
+	if req.DnsResolver != nil {
+		if existing.Type != "dns" {
+			respondError(w, http.StatusBadRequest, "DNS fields are only supported for dns monitors")
+			return
+		}
+		existing.DnsResolver = *req.DnsResolver
 	}
 	if req.HttpAuthType != nil {
 		authType := *req.HttpAuthType

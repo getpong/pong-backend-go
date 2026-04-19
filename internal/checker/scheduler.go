@@ -19,6 +19,7 @@ type Scheduler struct {
 	sslChecker       Checker
 	heartbeatChecker Checker
 	portChecker      Checker
+	dnsChecker       Checker
 	alertCh          chan model.StateChangeEvent
 	workerCount      int
 	tickInterval     time.Duration
@@ -36,6 +37,7 @@ func NewScheduler(s store.CheckerStore, checker Checker, alertCh chan model.Stat
 		sslChecker:       &SSLChecker{},
 		heartbeatChecker: &HeartbeatChecker{},
 		portChecker:      &PortChecker{},
+		dnsChecker:       &DNSChecker{},
 		alertCh:          alertCh,
 		workerCount:      workerCount,
 		tickInterval:     time.Duration(tickSeconds) * time.Second,
@@ -115,6 +117,8 @@ func (s *Scheduler) checkerFor(monitorType string) Checker {
 		return s.heartbeatChecker
 	case "port":
 		return s.portChecker
+	case "dns":
+		return s.dnsChecker
 	default:
 		// "http", "keyword" and any future types default to HTTP.
 		return s.httpChecker

@@ -25,6 +25,7 @@ const monitorColumns = `id, user_id, name, type, target, interval_secs, timeout_
 	keyword, keyword_type, keyword_match, expected_status, latency_warn_ms,
 	confirmation_count, consecutive_fails, heartbeat_token, heartbeat_secret, heartbeat_last_ping,
 	ssl_warn_days, ssl_expiry_at, protocol, http_auth_type, http_auth,
+	dns_record_type, dns_expected_value, dns_resolver,
 	enabled, status, last_checked_at, created_at, updated_at`
 
 // SQLiteStore is the SQLite-backed implementation of the store interfaces.
@@ -351,12 +352,14 @@ func (s *SQLiteStore) CreateMonitor(ctx context.Context, m *model.Monitor) (*mod
 			keyword, keyword_type, keyword_match, expected_status, latency_warn_ms,
 			confirmation_count, heartbeat_token, heartbeat_secret, ssl_warn_days,
 			protocol, http_auth_type, http_auth,
+			dns_record_type, dns_expected_value, dns_resolver,
 			enabled, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?)`,
 		m.UserID, m.Name, m.Type, m.Target, m.IntervalSecs, m.TimeoutSecs,
 		m.Keyword, m.KeywordType, m.KeywordMatch, m.ExpectedStatus, m.LatencyWarnMs,
 		m.ConfirmationCount, m.HeartbeatToken, m.HeartbeatSecret, m.SSLWarnDays,
 		m.Protocol, m.HttpAuthType, encryptedAuth,
+		m.DnsRecordType, m.DnsExpectedValue, m.DnsResolver,
 		boolToInt(m.Enabled),
 		now, now,
 	)
@@ -467,12 +470,14 @@ func (s *SQLiteStore) UpdateMonitor(ctx context.Context, m *model.Monitor) error
 			keyword=?, keyword_type=?, keyword_match=?, expected_status=?, latency_warn_ms=?,
 			confirmation_count=?, heartbeat_secret=?, ssl_warn_days=?,
 			protocol=?, http_auth_type=?, http_auth=?,
+			dns_record_type=?, dns_expected_value=?, dns_resolver=?,
 			enabled=?, last_checked_at=?, updated_at=?
 		WHERE id=? AND user_id=?`,
 		m.Name, m.Type, m.Target, m.IntervalSecs, m.TimeoutSecs,
 		m.Keyword, m.KeywordType, m.KeywordMatch, m.ExpectedStatus, m.LatencyWarnMs,
 		m.ConfirmationCount, m.HeartbeatSecret, m.SSLWarnDays,
 		m.Protocol, m.HttpAuthType, encryptedAuth,
+		m.DnsRecordType, m.DnsExpectedValue, m.DnsResolver,
 		boolToInt(m.Enabled),
 		nil, now, m.ID, m.UserID,
 	)
@@ -623,6 +628,7 @@ func (s *SQLiteStore) scanMonitor(row *sql.Row) (*model.Monitor, error) {
 		&m.ConfirmationCount, &m.ConsecutiveFails, &m.HeartbeatToken, &m.HeartbeatSecret, &heartbeatLastPing,
 		&m.SSLWarnDays, &sslExpiryAt, &m.Protocol,
 		&m.HttpAuthType, &m.HttpAuth,
+		&m.DnsRecordType, &m.DnsExpectedValue, &m.DnsResolver,
 		&enabled, &m.Status,
 		&lastChecked, &createdAt, &updatedAt,
 	)
@@ -666,6 +672,7 @@ func (s *SQLiteStore) scanMonitorRow(rows *sql.Rows) (*model.Monitor, error) {
 		&m.ConfirmationCount, &m.ConsecutiveFails, &m.HeartbeatToken, &m.HeartbeatSecret, &heartbeatLastPing,
 		&m.SSLWarnDays, &sslExpiryAt, &m.Protocol,
 		&m.HttpAuthType, &m.HttpAuth,
+		&m.DnsRecordType, &m.DnsExpectedValue, &m.DnsResolver,
 		&enabled, &m.Status,
 		&lastChecked, &createdAt, &updatedAt,
 	)
