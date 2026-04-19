@@ -88,7 +88,7 @@ components:
           example: "Production API"
         type:
           type: string
-          enum: [http, ssl, heartbeat, keyword, port]
+          enum: [http, ssl, heartbeat, keyword, port, dns]
           description: The kind of check this monitor performs.
           example: "http"
         target:
@@ -213,6 +213,22 @@ components:
           type: boolean
           description: Whether HTTP authentication credentials are configured. Credentials are never returned in responses.
           example: false
+        dns_record_type:
+          type: string
+          nullable: true
+          enum: [A, AAAA, MX, TXT, CNAME, NS]
+          description: DNS record type to resolve (DNS monitors only).
+          example: "A"
+        dns_expected_value:
+          type: string
+          nullable: true
+          description: Optional case-insensitive substring that must appear in at least one returned DNS record.
+          example: "93.184.216.34"
+        dns_resolver:
+          type: string
+          nullable: true
+          description: Optional custom DNS resolver (e.g. "1.1.1.1" or "8.8.8.8:53"). Defaults to the system resolver.
+          example: "1.1.1.1"
 
     MonitorCreate:
       type: object
@@ -227,7 +243,7 @@ components:
           example: "Production API"
         type:
           type: string
-          enum: [http, ssl, heartbeat, keyword, port]
+          enum: [http, ssl, heartbeat, keyword, port, dns]
           description: The kind of check this monitor performs.
           example: "http"
         target:
@@ -309,6 +325,19 @@ components:
           type: string
           description: Header value for custom header auth (required when http_auth_type is "header").
           example: "my-api-key"
+        dns_record_type:
+          type: string
+          enum: [A, AAAA, MX, TXT, CNAME, NS]
+          description: DNS record type (DNS monitors only). Defaults to A.
+          example: "A"
+        dns_expected_value:
+          type: string
+          description: Optional case-insensitive substring expected in at least one DNS record.
+          example: "93.184.216.34"
+        dns_resolver:
+          type: string
+          description: Optional custom DNS resolver (e.g. "1.1.1.1"). Defaults to the system resolver.
+          example: "1.1.1.1"
         alert_contact_ids:
           type: array
           items:
@@ -326,7 +355,7 @@ components:
           example: "Staging API"
         type:
           type: string
-          enum: [http, ssl, heartbeat, keyword, port]
+          enum: [http, ssl, heartbeat, keyword, port, dns]
           description: The kind of check this monitor performs.
           example: "http"
         target:
@@ -401,6 +430,19 @@ components:
           type: string
           description: Header value for custom header auth.
           example: "my-api-key"
+        dns_record_type:
+          type: string
+          enum: [A, AAAA, MX, TXT, CNAME, NS]
+          description: DNS record type (DNS monitors only).
+          example: "AAAA"
+        dns_expected_value:
+          type: string
+          description: Optional case-insensitive substring expected in DNS records.
+          example: "2606:2800"
+        dns_resolver:
+          type: string
+          description: Optional custom DNS resolver. Empty string clears it.
+          example: "8.8.8.8"
         alert_contact_ids:
           type: array
           items:
@@ -1002,6 +1044,33 @@ paths:
                   status:
                     type: string
                     example: "queued"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/monitors/{id}/reset:
+    post:
+      operationId: resetMonitorHistory
+      tags: [Monitors]
+      summary: Reset monitor history
+      description: |
+        Wipes all check results and alert logs for the monitor and resets its
+        state (status=unknown, consecutive_fails=0, last_checked_at=NULL,
+        ssl_expiry_at=NULL). Destructive — confirm before calling.
+      parameters:
+        - $ref: "#/components/parameters/MonitorId"
+      responses:
+        "200":
+          description: History reset.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "reset"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":

@@ -1,6 +1,6 @@
 # Pong
 
-Uptime monitoring with a real API. Monitor HTTP endpoints, TCP ports, SSL certificates, and background services. Get alerts via webhook, Slack, or email. Self-host with a single Docker command.
+Uptime monitoring with a real API. Monitor HTTP endpoints, TCP/UDP ports, SSL certificates, DNS records, and background services. Get alerts via webhook, Slack, or email. Self-host with a single Docker command.
 
 ## Quick Start
 
@@ -15,6 +15,7 @@ That's it. Open `http://localhost:8080/healthz` to verify.
 - **HTTP monitoring** — status code checks, keyword/regex matching, optional Basic Auth or custom header authentication
 - **TCP/UDP port monitoring** — check if databases, Redis, DNS servers, game servers are accepting connections
 - **SSL certificate monitoring** — alert before certificates expire
+- **DNS monitoring** — resolve A/AAAA/MX/TXT/CNAME/NS records, optional expected-value match, optional custom resolver
 - **Heartbeat monitoring** — your services ping Pong; alert if they stop
 - **Alerts** — webhook, Slack, email. Fire on state transitions only (no spam)
 - **Public status pages** — shareable URLs with 90-day uptime timeline, optional password
@@ -30,6 +31,7 @@ That's it. Open `http://localhost:8080/healthz` to verify.
 | `http` | HTTP/HTTPS endpoint, status code, optional keyword/regex |
 | `port` | TCP or UDP connection to host:port |
 | `ssl` | TLS certificate expiry date |
+| `dns` | DNS record resolution, optional expected value match |
 | `heartbeat` | Expects periodic pings, alerts if they stop |
 
 
@@ -130,7 +132,7 @@ Single Go binary, SQLite (WAL mode), no external dependencies.
 Scheduler (1s tick)
   - query due monitors
   - dispatch to worker pool (20 goroutines)
-  - workers run checks (HTTP/SSL/port/heartbeat)
+  - workers run checks (HTTP/SSL/port/DNS/heartbeat)
   - write results to SQLite
   - on state change -> alert via webhook/Slack/email
 ```

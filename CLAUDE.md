@@ -16,6 +16,7 @@ Uptime/health monitoring REST API built in Go.
 - **Keyword** — HTTP request with keyword or regex match in response body
 - **Heartbeat** — expects periodic pings; optional `X-Secret` header validation
 - **SSL** — TLS certificate expiry check with configurable warning threshold
+- **DNS** — resolves A/AAAA/MX/TXT/CNAME/NS records; optional expected-value substring match; optional custom resolver
 
 ## Project Structure
 
@@ -32,7 +33,7 @@ Uptime/health monitoring REST API built in Go.
 
 ## API Routes
 
-- `/api/v1/monitors/` — monitor CRUD, pause/resume, check now
+- `/api/v1/monitors/` — monitor CRUD, pause/resume, check now, reset history
 - `/api/v1/alert-contacts/` — alert contact CRUD, email verification, test button
 - `/api/v1/api-keys/` — API key management (`pong_` prefixed keys)
 - `/api/v1/status-pages/` — status page CRUD (token-based public URLs, optional password)
