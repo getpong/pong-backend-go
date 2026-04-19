@@ -134,6 +134,38 @@ func (s *SQLiteStore) Migrate(migrationsDir string) error {
 	}
 	sort.Strings(files)
 
+	// Fresh install detection: no applied migrations.
+	// Run only the baseline (first file) which contains the current schema,
+	// and record all other migrations as already applied — self-hosters get
+	// a clean DB without running historical fixup migrations.
+	var migCount int
+	s.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&migCount)
+	if migCount == 0 && len(files) > 0 {
+		baseline := files[0]
+		content, err := os.ReadFile(filepath.Join(migrationsDir, baseline))
+		if err != nil {
+			return fmt.Errorf("read baseline %s: %w", baseline, err)
+		}
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin baseline tx: %w", err)
+		}
+		if _, err := tx.Exec(string(content)); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("execute baseline %s: %w", baseline, err)
+		}
+		for _, name := range files {
+			if _, err := tx.Exec("INSERT INTO schema_migrations (filename) VALUES (?)", name); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("record baseline migration %s: %w", name, err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit baseline: %w", err)
+		}
+		return nil
+	}
+
 	for _, name := range files {
 		var count int
 		err := s.db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE filename = ?", name).Scan(&count)
