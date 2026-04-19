@@ -628,6 +628,26 @@ func (h *MonitorHandler) DailyUptime(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"monitor_id": id, "days": days, "daily": data})
 }
 
+// ResetHistory wipes all check results, alert logs, and resets monitor state
+// (status=unknown, consecutive_fails=0, last_checked_at=NULL, ssl_expiry_at=NULL).
+// Destructive — caller should confirm with the user before calling.
+func (h *MonitorHandler) ResetHistory(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+
+	id, err := parseID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.store.ResetMonitorHistory(r.Context(), id, userID); err != nil {
+		respondError(w, http.StatusNotFound, "monitor not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
 // CheckNow resets the monitor's last_checked_at so the scheduler picks it up
 // on the next tick. Returns 202 Accepted.
 func (h *MonitorHandler) CheckNow(w http.ResponseWriter, r *http.Request) {

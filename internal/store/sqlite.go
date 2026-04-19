@@ -532,6 +532,47 @@ func (s *SQLiteStore) DeleteMonitor(ctx context.Context, id, userID int64) error
 	return nil
 }
 
+// ResetMonitorHistory wipes all check results and alert logs for a monitor
+// and resets its state to unknown. Ownership is verified via user_id.
+func (s *SQLiteStore) ResetMonitorHistory(ctx context.Context, id, userID int64) error {
+	now := time.Now().UTC().Format(timeFormat)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
+		`UPDATE monitors
+		SET status = 'unknown', consecutive_fails = 0,
+		    last_checked_at = NULL, ssl_expiry_at = NULL, updated_at = ?
+		WHERE id = ? AND user_id = ?`,
+		now, id, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("reset monitor state: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		"DELETE FROM check_results WHERE monitor_id = ?", id,
+	); err != nil {
+		return fmt.Errorf("delete check results: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		"DELETE FROM alert_log WHERE monitor_id = ?", id,
+	); err != nil {
+		return fmt.Errorf("delete alert log: %w", err)
+	}
+
+	return tx.Commit()
+}
+
 func (s *SQLiteStore) ResetLastChecked(ctx context.Context, id, userID int64) error {
 	res, err := s.db.ExecContext(ctx,
 		"UPDATE monitors SET last_checked_at = NULL WHERE id = ? AND user_id = ?", id, userID,
